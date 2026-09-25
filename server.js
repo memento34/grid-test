@@ -43,6 +43,7 @@ function errorResponse(res, error) {
   const status = error instanceof OkxError ? error.status : (error.status || 500);
   const message = status === 500 ? 'Sunucu hatası. Railway kayıtlarını kontrol edin.' : error.message;
   if (status === 500) console.error(error);
+  else if (error instanceof OkxError) console.warn('OKX isteği başarısız:', { code: error.code, message: error.message });
   send(res, status, { error: message, code: error.code || '' });
 }
 

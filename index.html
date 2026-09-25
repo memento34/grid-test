@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1017">
+  <title>Grid Control · OKX</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div id="login-screen" class="login-screen hidden">
+    <div class="login-card">
+      <div class="brand-mark">G<span>◆</span></div>
+      <p class="eyebrow">ÖZEL İŞLEM PANELİ</p>
+      <h1>Grid Control</h1>
+      <p class="muted">OKX vadeli gridlerini tek yerden yönetin.</p>
+      <form id="login-form">
+        <label for="password">Panel şifresi</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button class="primary full" type="submit">Panele giriş yap <span>↗</span></button>
+      </form>
+      <p id="login-error" class="form-error" role="alert"></p>
+      <p class="login-foot">API bilgileri yalnızca Railway değişkenlerinde saklanır.</p>
+    </div>
+  </div>
+
+  <div id="app" class="shell hidden">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark small">G<span>◆</span></span><span>Grid Control<small>OKX FUTURES</small></span></div>
+      <div class="side-label">ÇALIŞMA ALANI</div>
+      <a class="nav-item selected" href="#create"><span class="nav-icon">▦</span> Grid botları</a>
+      <a class="nav-item" href="#active"><span class="nav-icon">◉</span> Aktif botlar</a>
+      <div class="sidebar-bottom">
+        <div class="connection"><span class="live-dot"></span><div><strong>Canlı OKX bağlantısı</strong><small id="site-name">—</small></div></div>
+        <button id="logout" class="text-button">Oturumu kapat →</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="breadcrumb">TRADING / <strong>GRID BOTLARI</strong></div>
+        <div class="topbar-right"><span id="connection-pill" class="status-pill">Bağlanıyor</span><span class="avatar">GC</span></div>
+      </header>
+
+      <div class="content">
+        <section class="hero">
+          <div>
+            <div class="eyebrow lime">STRATEJİ MERKEZİ <span class="hero-line"></span> OKX VADELİ</div>
+            <h1>Gridlerin kontrolü<br><em>sende.</em></h1>
+            <p>Fiyat aralığını belirle, yönünü seç ve OKX grid botunu başlat. Açık emirleri ve bot durumunu buradan izle.</p>
+          </div>
+          <div class="hero-graphic" aria-hidden="true"><div class="graphic-grid"><span class="grid-line l1"></span><span class="grid-line l2"></span><span class="grid-line l3"></span><span class="grid-line l4"></span><span class="grid-line l5"></span><svg viewBox="0 0 300 200" preserveAspectRatio="none"><path d="M0 156 L22 144 L39 151 L58 111 L78 122 L96 92 L115 105 L136 78 L158 91 L178 56 L199 64 L220 35 L240 47 L262 24 L300 14"/></svg></div><div class="graphic-tag">GRID / 01</div></div>
+        </section>
+
+        <section class="summary-row">
+          <div class="summary-tile"><span>AKTİF BOTLAR</span><strong id="active-count">—</strong><small>Bu panelden açılan</small></div>
+          <div class="summary-tile"><span>BAĞLANTI</span><strong id="account-state">—</strong><small id="account-site">OKX API</small></div>
+          <div class="summary-tile"><span>GÜVENLİK SINIRI</span><strong id="margin-limit">—</strong><small>Bot başına en yüksek marjin</small></div>
+        </section>
+
+        <div class="workspace-grid" id="create">
+          <section class="panel builder">
+            <div class="panel-title-row"><div><p class="eyebrow">YENİ STRATEJİ</p><h2>Grid oluştur</h2></div><span class="step-badge">01 / 02</span></div>
+            <form id="grid-form">
+              <div class="field-block"><label for="pair">OKX vadeli parite</label><div class="select-wrap"><select id="pair" name="instId" required><option value="">Pariteler yükleniyor...</option></select></div><small>Yalnızca USDT teminatlı sürekli vadeli sözleşmeler.</small></div>
+              <div class="field-block"><label>Grid yönü</label><div class="segment" id="direction-segment"><label><input type="radio" name="direction" value="long" checked><span>↗ Long</span></label><label><input type="radio" name="direction" value="short"><span>↘ Short</span></label><label><input type="radio" name="direction" value="neutral"><span>↔ Nötr</span></label></div><small id="direction-help">Fiyat düştükçe long açar; bir üst gridde kapatır.</small></div>
+              <div class="field-pair"><div class="field-block"><label for="lower">Alt fiyat</label><div class="input-suffix"><input id="lower" name="minPx" type="number" min="0" step="any" placeholder="Örn. 140" required><span>USDT</span></div></div><div class="field-block"><label for="upper">Üst fiyat</label><div class="input-suffix"><input id="upper" name="maxPx" type="number" min="0" step="any" placeholder="Örn. 180" required><span>USDT</span></div></div></div>
+              <div class="field-pair"><div class="field-block"><label for="grids">Grid sayısı</label><input id="grids" name="gridNum" type="number" min="2" max="100" value="10" required></div><div class="field-block"><label for="spacing">Aralık türü</label><div class="select-wrap"><select id="spacing" name="runType"><option value="1">Eşit fiyat aralığı</option><option value="2">Eşit yüzde aralığı</option></select></div></div></div>
+              <div class="field-pair"><div class="field-block"><label for="margin">Toplam marjin</label><div class="input-suffix"><input id="margin" name="margin" type="number" min="0" step="any" value="50" required><span>USDT</span></div></div><div class="field-block"><label for="leverage">Kaldıraç</label><div class="input-suffix"><input id="leverage" name="leverage" type="number" min="1" step="1" value="1" required><span>×</span></div></div></div>
+              <div class="info-band"><span>ⓘ</span><p><strong>İlk pozisyon kapalı.</strong> Bot fiyat seviyelerinde işlem bekler. OKX, marjini grid emirlerine kendi kurallarına göre dağıtır.</p></div>
+              <p id="budget-note" class="budget-note" aria-live="polite">Grid başına yaklaşık bütçe burada gösterilir.</p>
+              <div id="create-error" class="create-error hidden" role="alert"></div>
+              <div class="form-actions"><button id="create-button" type="submit" class="primary full">Canlı grid botunu başlat <span>↗</span></button><p>Bu işlem gerçek OKX hesabınızda bot oluşturur.</p></div>
+            </form>
+          </section>
+
+          <section class="panel preview">
+            <div class="panel-title-row"><div><p class="eyebrow">ANLIK ÖNİZLEME</p><h2>Grid haritası</h2></div><span class="step-badge">02 / 02</span></div>
+            <div class="market-card"><div><small>SEÇİLİ PARİTE</small><strong id="preview-pair">—</strong></div><div class="market-price"><small>ANLIK FİYAT</small><strong id="last-price">—</strong></div></div>
+            <div class="ladder-head"><span>ÜST SINIR <strong id="preview-upper">—</strong></span><span class="legend"><i></i> SEVİYELER</span></div>
+            <div id="ladder" class="ladder"><div class="empty-ladder">Fiyat sınırlarını girerek grid seviyelerini görüntüleyin.</div></div>
+            <div class="ladder-foot">ALT SINIR <strong id="preview-lower">—</strong></div>
+            <div class="preview-note" id="preview-note">Fiyat seviyeleri yaklaşık gösterilir. Son emirleri OKX oluşturur.</div>
+          </section>
+        </div>
+
+        <section class="panel active-panel" id="active">
+          <div class="panel-title-row"><div><p class="eyebrow">CANLI DURUM</p><h2>Aktif gridler</h2></div><button id="refresh" class="secondary">↻ Yenile</button></div>
+          <div id="bots" class="bots-list"><div class="empty-state">Botlar yükleniyor...</div></div>
+        </section>
+        <footer>Grid Control · OKX vadeli grid API · Emirler ve pozisyonlar OKX hesabınızda tutulur.</footer>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <div id="modal" class="modal-backdrop hidden"><div class="modal"><button id="modal-close" class="close" aria-label="Kapat">×</button><div id="modal-body"></div></div></div>
+</body>
+</html>

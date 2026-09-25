@@ -62,6 +62,20 @@ Bu nedenle bot oluşturma işlemi canlı hesapta gerçekleşir.
 Bot oluşturma isteği ağda zaman aşımına uğrarsa bot yine de açılmış olabilir.
 Bu durumda yeniden Başlat'a basmadan önce OKX bot listesini kontrol edin.
 
+## Bot oluşturma hatası
+
+Panel artık OKX'in döndürdüğü hata kodunu ve açıklamasını formun altında kalıcı
+olarak gösterir. Aynı bilgi, API anahtarları olmadan Railway Deploy Logs içinde
+de görünür. HTTP 200, OKX'in emri kabul ettiği anlamına gelmez: API bu HTTP
+durumu içinde ayrıca ret kodu gönderebilir.
+
+Paneldeki grid başına bütçe hesabı yaklaşık bir ön kontroldür. Örneğin 20 USDT,
+100 grid ve 1× kaldıraç toplam marjini grid başına yaklaşık 0,20 USDT'ye
+indirir. OKX'in yedek marjini ve minimum sözleşme büyüklüğü bunun üstüne
+çıkabilir. Uyarı varsa grid sayısını azaltarak veya marjini yükselterek yeniden
+deneyin; kesin uygunluk kararını OKX verir. Bot oluşmadan hesabınızda emir
+açılmaz; belirsiz ağ hatasında ise önce OKX bot listesini kontrol edin.
+
 ## Yerelde çalışma
 
 Node.js 20 veya yenisi gerekir. Değişkenleri terminal ortamınızda tanımlayıp

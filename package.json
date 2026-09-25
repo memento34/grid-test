@@ -1,6 +1,6 @@
 {
   "name": "okx-grid-control",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Railway-ready OKX futures grid control panel",
   "type": "module",

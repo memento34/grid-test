@@ -55,12 +55,21 @@ export function createOkxClient(config, request = fetch) {
     } catch {
       throw new OkxError(`OKX geçersiz yanıt verdi (HTTP ${response.status}).`, 'INVALID_RESPONSE', 502);
     }
-    if (!response.ok || result.code !== '0') {
-      throw new OkxError(result.msg || `OKX hatası (HTTP ${response.status})`, result.code, 502);
+    const responseCode = result?.code == null ? '' : String(result.code);
+    if (!response.ok || responseCode !== '0') {
+      const nested = Array.isArray(result?.data)
+        ? result.data.find(item => item?.sMsg || (item?.sCode && String(item.sCode) !== '0'))
+        : null;
+      const code = responseCode && responseCode !== '0' ? responseCode : String(nested?.sCode || '');
+      const detail = result?.msg || nested?.sMsg || 'OKX açıklama göndermedi.';
+      throw new OkxError('OKX isteği reddetti' + (code ? ' (kod ' + code + ')' : ' (HTTP ' + response.status + ')') + ': ' + detail, code, 502);
     }
     if (method === 'POST' && Array.isArray(result.data)) {
-      const failed = result.data.find(item => item && item.sCode && item.sCode !== '0');
-      if (failed) throw new OkxError(failed.sMsg || 'OKX emri reddetti.', failed.sCode, 422);
+      const failed = result.data.find(item => item?.sCode != null && String(item.sCode) !== '0');
+      if (failed) {
+        const code = String(failed.sCode);
+        throw new OkxError('OKX emri reddetti (kod ' + code + '): ' + (failed.sMsg || 'OKX açıklama göndermedi.'), code, 422);
+      }
     }
     return result.data ?? [];
   }
@@ -71,7 +80,7 @@ export function createOkxClient(config, request = fetch) {
     async instruments() {
       const data = await call('GET', '/api/v5/public/instruments', { instType: 'SWAP' });
       return data.filter(item => item.instId?.endsWith('-USDT-SWAP') && item.state === 'live')
-        .map(item => ({ instId: item.instId, tickSz: item.tickSz, minSz: item.minSz, ctVal: item.ctVal }))
+        .map(item => ({ instId: item.instId, tickSz: item.tickSz, minSz: item.minSz, ctVal: item.ctVal, ctValCcy: item.ctValCcy }))
         .sort((a, b) => a.instId.localeCompare(b.instId));
     },
     async ticker(instId) {
