@@ -1,6 +1,6 @@
-# Grid Control 3 — OKX + Telegram
+# Grid Control 3.0.1 — Gerçek OKX hesabı + Telegram
 
-Tek dosya uygulama: **okx-grid-control-v3.mjs**. Sunucu, emir motoru, OKX istemcisi, Telegram ve arayüz bu dosyanın içinde. Harici npm bağımlılığı gerektirmez. ZIP ayrıca inceleme için modüler kaynakları, otomatik testleri ve değerlendirme raporunu içerir.
+Tek dosya uygulama: **okx-grid-control-v3-live.mjs**. Sunucu, emir motoru, OKX istemcisi, Telegram ve arayüz bu dosyanın içinde. Harici npm bağımlılığı gerektirmez. ZIP ayrıca inceleme için modüler kaynakları, otomatik testleri ve değerlendirme raporunu içerir.
 
 Bu sürüm, v2.1'deki dinamik normal emirli grid yaklaşımını korur: USDT sürekli vadeli, cross 10×, en yakın 1–5 açık seviye, geometrik grid. OKX'in hazır grid botunu başlatmaz. Kâr ya da hatasız çalışma garantisi vermez.
 
@@ -8,23 +8,23 @@ Bu sürüm, v2.1'deki dinamik normal emirli grid yaklaşımını korur: USDT sü
 
 1. Node.js **22 veya daha yeni** kurun. ZIP'i bir klasöre açın.
 2. `.env.example` dosyasını `.env` olarak kopyalayın. OKX anahtarlarını ve güçlü bir `DASHBOARD_PASSWORD` girin.
-3. İlk çalıştırmada `OKX_DEMO=true` bırakın ve **OKX demo işlem API anahtarı** kullanın. Gerçek ve demo anahtarlar birbirinin yerine geçmez.
-4. `DATA_DIR` için kalıcı bir klasör seçin. Örnek `./data-demo`.
+3. `OKX_DEMO=false` olarak bırakın ve **gerçek hesabınıza ait OKX API anahtarını** kullanın. Değişken hiç tanımlı değilse de varsayılan gerçek hesaptır. Demo zorunluluğu yoktur.
+4. `DATA_DIR` için kalıcı bir klasör seçin. Örnek `./data-live`.
 5. Çalıştırın:
 
 ```sh
-node --env-file=.env okx-grid-control-v3.mjs
+node --env-file=.env okx-grid-control-v3-live.mjs
 ```
 
 Alternatif: `npm start` (aynı tek dosyayı çalıştırır). `npm install` gerekmez.
 
 Tarayıcıdan [yerel paneli](http://localhost:3000) açın. Panel şifresiyle giriş yapın, **Yeni grid oluştur → Planı hesapla → Gridi başlat** akışını kullanın. API anahtarlarını tarayıcıya girmeyin; yalnızca sunucunun ortam değişkenlerinde tutun.
 
-**Canlıya geçiş:** demo botlarını tamamlayın, süreci düzgün kapatın, canlı anahtarları girin, `OKX_DEMO=false` yapın ve farklı bir kalıcı `DATA_DIR` seçin. Arayüz canlı başlatma sırasında `CANLI` yazmanızı ister. Bu sürümün hazırlanmasında hesabınıza emir gönderilmedi; gerçek hesap veya gerçek Telegram teslimatı sınanmadı.
+**Doğrudan gerçek hesap:** canlı API anahtarlarını girin; paket `OKX_DEMO=false` ile gelir. Railway veya mevcut sunucu ortamında eski `OKX_DEMO=true` varsa onu da `false` olarak değiştirin; sunucu ortamı `.env` dosyasından önceliklidir. Önceden demo kayıtları oluşturduysanız onlar için kullanılan klasör yerine canlıya ait kalıcı `DATA_DIR` kullanın. Panelde Gridi başlat düğmesine basıldığında kontroller geçerse motor gerçek hesaba emir gönderir; ek CANLI yazma adımı yoktur. API anahtarında Read ve Trade yetkileri bulunmalıdır. Bu sürümün hazırlanmasında hesabınıza emir gönderilmedi; gerçek hesap veya gerçek Telegram teslimatı sınanmadı.
 
 ## Railway / sunucu
 
-- Başlatma: `node okx-grid-control-v3.mjs` veya `npm start`. Railway Variables kullanıyorsanız `.env` gerekmiyor.
+- Başlatma: `node okx-grid-control-v3-live.mjs` veya `npm start`. Railway Variables kullanıyorsanız `.env` gerekmiyor.
 - Volume bağlayın; `DATA_DIR` değerini **gerçek mount yoluna** ayarlayın. Değişkenin tanımlı olması tek başına disk kalıcılığını kanıtlamaz.
 - HTTPS yayınında `NODE_ENV=production` kullanın; oturum çerezi Secure olur. Yerel HTTP'de development kullanın.
 - **Tek replica** çalıştırın. Aynı hesap/pariteyi başka sunucudan da yönetmeyin. Volume kilidi yalnızca aynı klasörü kullanan süreçleri engeller; ayrı sunucuları engellemez.
@@ -51,7 +51,7 @@ Kayıt klasöründe eski `manual-grids.json` bulunursa uygulama başlamayı redd
 4. Yerelde chat ID öğrenmek için:
 
 ```sh
-node --env-file=.env okx-grid-control-v3.mjs --telegram-chat-id
+node --env-file=.env okx-grid-control-v3-live.mjs --telegram-chat-id
 ```
 
 Bu komut gelen güncellemelerden chat ID listesini okur; mesaj göndermez ve işlem motorunu başlatmaz. Çıkan size ait `chatId` değerini `TELEGRAM_CHAT_ID` olarak yazın, servisi yeniden başlatın. Başka bir uygulamanın webhook kullandığı bot yerine bu iş için ayrı bir Telegram botu kullanın. Telegram kişisel `api_id` / `api_hash` bilgileri gerekmiyor.
@@ -116,7 +116,7 @@ Normal SIGINT/SIGTERM kapanışında girişler duraklatılır, iptaller denenir,
 npm test
 ```
 
-33 otomatik test; kısmi giriş/çıkış, geç dolum, iptal yarışı, eşzamanlı dolum sınırı, belirsiz POST, kalıcı kayıt, çökme sonrası toparlanma, net/hedge, dış müdahale, PnL işaretleri, funding, sayfalama, Telegram filtreleri, oturum/CSRF ve canlı onayı senaryolarını kapsar. Bunlar yerel taklit OKX/Telegram yanıtlarıyla çalışır; canlı borsa sertifikasyonu değildir.
+35 otomatik test; kısmi giriş/çıkış, geç dolum, iptal yarışı, eşzamanlı dolum sınırı, belirsiz POST, kalıcı kayıt, çökme sonrası toparlanma, net/hedge, dış müdahale, PnL işaretleri, funding, sayfalama, Telegram filtreleri, oturum/CSRF ve doğrudan canlı başlatma senaryolarını kapsar. Bunlar yerel taklit OKX/Telegram yanıtlarıyla çalışır; canlı borsa sertifikasyonu değildir.
 
 Masaüstü (1440 px) ve mobil (390 px) tarayıcı kontrollerinde giriş, detay, plan önizleme, değişen planın onayını geçersizleştirme ve duraklatma denendi; JavaScript konsol hatası görülmedi. Modüler kaynaklar `source/`, testler `source/test/` altındadır. `INCELEME.md` eski sürümdeki bulguları ve sınırları açıklar.
 

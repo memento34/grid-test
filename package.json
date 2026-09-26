@@ -1,13 +1,13 @@
 {
   "name": "okx-grid-control",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "start": "node --env-file-if-exists=.env okx-grid-control-v3.mjs",
+    "start": "node --env-file-if-exists=.env okx-grid-control-v3-live.mjs",
     "test": "node --test source/test/*.test.js"
   }
 }

@@ -12,7 +12,7 @@
 | Yüksek | Giriş ve çıkış aynı tek `level.order` alanını kullanıyordu. | Bir girişin iptali beklenirken kısmi dolumu ayrı çıkışla korumak mümkün değildi. | Kalıcı emir günlüğü; aktif çıkış rezervleri düşülerek yalnız açıkta kalan miktara emir. |
 | Yüksek | Bot çalışırken borsadaki gerçek pozisyon ile yerel miktar karşılaştırılmıyordu. | Manuel kapama, başka bot, tasfiye veya geç veri yerel miktarı bozabilirdi. | Pozisyon miktarı ve yönü, bekleyen emir sahipliği ve muhasebedeki harici işlemler kontrol edilir. Uyuşmazlıkta girişler iptal edilir. |
 | Yüksek | Başlangıçta normal emirler kontrol ediliyor, bekleyen algo emirleri kontrol edilmiyordu. | Sonradan tetiklenen başka algo, gridin pozisyonuna müdahale edebilirdi. | Başlangıçta ve periyodik olarak conditional/OCO/trigger/trailing/iceberg/TWAP ile yerel grid kontrolü. Bu, her olası harici işlem kaynağını ortadan kaldırmaz. |
-| Yüksek | Demo işlem seçeneği yoktu. | İlk deneme gerçek emir gönderebilirdi. | Demo varsayılan; canlı ayrı ortam ve arayüz onayıyla açılır. |
+| Yüksek | Demo işlem seçeneği yoktu. | İlk deneme gerçek emir gönderebilirdi. | 3.0.1 kullanıcı isteğiyle gerçek hesap varsayılanıdır; Gridi başlat düğmesi emir gönderimini etkinleştirir; ek metin onayı kaldırılmıştır. Ortam ayrımı korunur. |
 | Yüksek | PnL, ücret ve funding muhasebesi yoktu. | Net performans görülemiyordu. | OKX bill arşivi, sayfalama, kimlik tekilleştirmesi, dolum miktarı mutabakatı ve pozisyon UPL. Eksik veri açıkça işaretlenir. |
 | Yüksek | Süreçler arası tek-yazıcı kilidi yoktu. | Aynı dosyayı kullanan iki süreç çift emir oluşturabilirdi. | Kalıcı klasörde özel kilit; ayrı sunucu/ayrı volume için yine tek replica şartı. |
 | Orta | Ondalık basamak hesabı bilimsel gösterimi doğru desteklemiyordu; miktarlar kayan noktalıydı. | Küçük fiyat/lot adımında sıfırlanma veya yanlış adım hesabı oluşabilirdi. | 18 basamaklı BigInt miktar ve muhasebe işlemleri. Geometrik fiyat hesabı tick'e aşağı yuvarlanır; çakışan seviyeler reddedilir. |
@@ -40,7 +40,7 @@ Tek tek grid seviyelerindeki OKX PnL'si borsanın birleştirilmiş pozisyon mali
 
 ## Test sonucu
 
-33 otomatik test başarıyla geçti. Finansal tutarlar ve emir senaryoları taklit borsa yanıtlarıyla denendi. Kabul edildikten hemen sonra disk yazma hatası olan emir, yeniden başlatmada aynı kimlikle bulundu; yeniden gönderilmedi. Beş girişin aynı anda dolması, çıkışların kısmi dolup iptal olması, regrese dolum verisi, dış işlem ve pozisyon uyuşmazlıkları test edildi.
+35 otomatik test başarıyla geçti. Finansal tutarlar ve emir senaryoları taklit borsa yanıtlarıyla denendi. Kabul edildikten hemen sonra disk yazma hatası olan emir, yeniden başlatmada aynı kimlikle bulundu; yeniden gönderilmedi. Beş girişin aynı anda dolması, çıkışların kısmi dolup iptal olması, regrese dolum verisi, dış işlem ve pozisyon uyuşmazlıkları test edildi.
 
 Telegram testleri gerçek mesaj göndermeden 429 geri çekilmesini, geçici hataların çözülmesini, tekrar sınırlarını, birleştirmeyi ve gizli alan temizliğini doğruladı. HTTP testleri oturum, CSRF, Origin ve dışa aktarma korumasını kapsadı. 1440 px masaüstü ve 390 px mobil tarayıcıda görsel/etkileşim kontrolü yapıldı.
 
@@ -50,4 +50,4 @@ Telegram testleri gerçek mesaj göndermeden 429 geri çekilmesini, geçici hata
 
 ## Önerilen kabul denemesi
 
-OKX demo hesabında bir girişin dolması, aynı miktarda çıkış kurulması ve çıkışın dolmasından sonra yeniden giriş kurulmasını izleyin. Panelin emir kimliklerini, toplam pozisyonunu, ücretlerini ve PnL'sini OKX geçmişiyle karşılaştırın. Duraklatmayı, hedef çıkış bekleyerek bitirmeyi ve normal yeniden başlatmayı deneyin. Canlı işlem kararını bu gözlemlerden sonra verin; test sonuçları piyasa ve altyapı riskini ortadan kaldırmaz.
+Kullanıcının seçtiği küçük tutarlı gerçek hesap denemesinde bir girişin dolması, aynı miktarda çıkış kurulması ve çıkışın dolmasından sonra yeniden giriş kurulmasını izleyin. Panelin emir kimliklerini, toplam pozisyonunu, ücretlerini ve PnL'sini OKX geçmişiyle karşılaştırın. Duraklatmayı, hedef çıkış bekleyerek bitirmeyi ve normal yeniden başlatmayı deneyin. Test sonuçları piyasa ve altyapı riskini ortadan kaldırmaz.
