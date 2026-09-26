@@ -1,12 +1,13 @@
 {
-  "name": "okx-manual-grid-control",
-  "version": "2.1.0",
+  "name": "okx-grid-control",
+  "version": "3.0.0",
   "private": true,
-  "description": "Railway-ready dynamic futures limit grid for OKX",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "start": "node server.js",
-    "test": "node --test"
+    "start": "node --env-file-if-exists=.env okx-grid-control-v3.mjs",
+    "test": "node --test source/test/*.test.js"
   }
 }
