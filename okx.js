@@ -98,9 +98,9 @@ export function createOkxClient(config, request = fetch) {
     async pendingOrders(instId) {
       return call('GET', '/api/v5/trade/orders-pending', { instId, instType: 'SWAP' }, true);
     },
-    async setLeverage(instId, leverage, posSide) {
-      const body = { instId, lever: String(leverage), mgnMode: 'isolated' };
-      if (posSide) body.posSide = posSide;
+    async setLeverage(instId, leverage, mgnMode = 'cross', posSide) {
+      const body = { instId, lever: String(leverage), mgnMode };
+      if (mgnMode === 'isolated' && posSide) body.posSide = posSide;
       return call('POST', '/api/v5/account/set-leverage', body, true);
     },
     async placeOrder(order) {

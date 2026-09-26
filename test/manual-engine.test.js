@@ -8,13 +8,14 @@ import { deriveGrid, ManualGridEngine } from '../manual-engine.js';
 function exchange() {
   const orders = new Map();
   const placed = [];
+  const leverageCalls = [];
   let price = 100;
   const client = {
     instruments: async () => [{ instId: 'TEST-USDT-SWAP', state: 'live', tickSz: '0.01', lotSz: '1', minSz: '1', ctVal: '0.01', ctValCcy: 'TEST' }],
     ticker: async () => ({ last: String(price), bidPx: String(price - 0.01), askPx: String(price + 0.01) }),
     accountConfig: async () => ({ posMode: 'long_short_mode' }),
     positions: async () => [], pendingOrders: async () => [], gridList: async () => [],
-    setLeverage: async () => [{ lever: '1' }],
+    setLeverage: async (...args) => { leverageCalls.push(args); return [{ lever: String(args[1]), mgnMode: args[2] }]; },
     placeOrder: async body => {
       placed.push(body);
       orders.set(body.clOrdId, { ...body, state: 'live', accFillSz: '0' });
@@ -23,7 +24,7 @@ function exchange() {
     orderDetails: async (_, id) => orders.get(id) || null,
     cancelOrder: async (_, id) => { orders.get(id).state = 'canceled'; return [{ sCode: '0' }]; }
   };
-  return { client, orders, placed, setPrice: value => { price = value; } };
+  return { client, orders, placed, leverageCalls, setPrice: value => { price = value; } };
 }
 
 function setup() {
@@ -47,9 +48,12 @@ test('five normal entry limits, adjacent TP, rearm, and restart recovery', async
   try {
     const bot = await engine.create(input);
     assert.equal(bot.gridNum, deriveGrid(70, 110, 3).gridNum);
+    assert.equal(bot.leverage, 10);
+    assert.equal(bot.tdMode, 'cross');
+    assert.deepEqual(fake.leverageCalls, [['TEST-USDT-SWAP', 10, 'cross']]);
     await engine.tick();
     assert.equal(fake.placed.length, 5);
-    assert(fake.placed.every(order => order.ordType === 'limit' && order.side === 'buy' && order.tdMode === 'isolated'));
+    assert(fake.placed.every(order => order.ordType === 'limit' && order.side === 'buy' && order.tdMode === 'cross'));
     const first = fake.placed[0];
     const firstDetail = fake.orders.get(first.clOrdId);
     firstDetail.state = 'filled';
@@ -58,6 +62,7 @@ test('five normal entry limits, adjacent TP, rearm, and restart recovery', async
     const tp = fake.placed.find(order => order.side === 'sell');
     assert(tp);
     assert.equal(tp.posSide, 'long');
+    assert.equal(tp.tdMode, 'cross');
     assert(Number(tp.px) > Number(first.px));
     assert.equal(tp.sz, first.sz);
     fake.orders.get(tp.clOrdId).state = 'filled';
@@ -69,6 +74,18 @@ test('five normal entry limits, adjacent TP, rearm, and restart recovery', async
     const resumed = new ManualGridEngine(fake.client, dir);
     await resumed.tick();
     assert.equal(fake.placed.length, count);
+  } finally { cleanup(); }
+});
+
+test('existing bot without a mode keeps isolated orders after upgrade', async () => {
+  const { fake, engine, cleanup } = setup();
+  try {
+    await engine.create(input);
+    delete engine.bots[0].tdMode;
+    engine.bots[0].leverage = 1;
+    engine.save();
+    await engine.tick();
+    assert(fake.placed.every(order => order.tdMode === 'isolated'));
   } finally { cleanup(); }
 });
 

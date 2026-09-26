@@ -20,8 +20,8 @@ kendiliğinden durmaz; OKX hesabınızdan ayrıca yönetmeniz gerekir.
 6. Servisi **tek kopya/replica** olarak çalıştırın. Aynı volume üzerinde iki
    kopyanın emir yönetmesi desteklenmez.
 
-`MAX_TRADE_USDT` (varsayılan 100), `MAX_LEVERAGE` (5) ve
-`MAX_ACTIVE_BOTS` (5) isteğe bağlı işlem sınırlarıdır. `DATA_DIR` için
+`MAX_TRADE_USDT` (varsayılan 100) ve `MAX_ACTIVE_BOTS` (5)
+isteğe bağlı işlem sınırlarıdır. `DATA_DIR` için
 volume yolu Railway servisinin kendi dosya sisteminde olmalıdır.
 
 ## Grid hesabı ve emir döngüsü
@@ -33,8 +33,9 @@ volume yolu Railway servisinin kendi dosya sisteminde olmalıdır.
   gösterebilir. %0,1–%25 ve en fazla 500 seviye desteklenir.
 - “İşlem başı değer” her giriş için sabit **USDT emir değeridir**. Toplam
   grid sayısına bölünmez. Sözleşme adımına aşağı yuvarlanan gerçek emir
-  değeri biraz daha düşük olabilir. Kaldıraç bu değeri çoğaltmaz; seçilen
-  kaldıraç OKX isolated hesabına uygulanır.
+  değeri biraz daha düşük olabilir. Kaldıraç bu değeri çoğaltmaz. Yeni
+  botlarda marjin modu **cross**, kaldıraç sabit **10×** olarak OKX'e
+  ayarlanır ve her giriş/çıkış emri `tdMode=cross` ile gönderilir.
 - Long: piyasanın altındaki en yakın beş girişe alış limiti konur. Giriş
   dolunca bir üst komşu seviyeye satış limitiyle kâr alma konur. Çıkış
   dolunca aynı giriş seviyesi yeniden kullanılabilir.
@@ -58,6 +59,12 @@ volume yolu Railway servisinin kendi dosya sisteminde olmalıdır.
 Başlatmadan önce uygulama aynı paritede başka açık pozisyon, normal emir
 veya OKX yerel grid botu bulunmadığını kontrol eder. Bunlar varsa yeni
 botu başlatmaz. Bir paritede aynı anda bir Grid Control botu çalışır.
+
+Önceki sürümde açılmış isolated botlar, kayıtlı emir ve pozisyonlarını
+isolated modunda yönetmeyi sürdürür. Bunları çalışırken cross moda çevirmeyin.
+Yeni cross 10× bot açmak için eski botun girişlerini durdurup açık
+pozisyonlarının çıkışlarının tamamlanmasını bekleyin; ardından yeni botu
+oluşturun. Cross modda hesap bakiyesi pozisyonlar arasında paylaşılır.
 
 Bot açıkken Railway servisinin sürekli çalışması gerekir. Servis durursa
 OKX'te daha önce konmuş limit emirleri durmaya devam eder; **yeni dolan bir

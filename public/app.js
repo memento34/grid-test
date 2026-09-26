@@ -120,7 +120,7 @@ function botCard(bot) {
   return '<div class="bot-card">' +
     '<div><strong>' + esc(bot.instId) + '</strong><small>Bot ' + esc(bot.id) + ' · ' + esc(bot.status) + '</small></div>' +
     '<div><span class="direction-badge ' + esc(bot.direction) + '">' + directionName(bot.direction) + '</span><small>' + fmt(bot.minPx) + ' – ' + fmt(bot.maxPx) + ' USDT</small></div>' +
-    '<div class="bot-meta">' + entries + ' giriş · ' + exits + ' kâr alma<small>' + fmt(bot.amountPerTrade) + ' USDT/işlem · ' + esc(bot.leverage) + '×</small></div>' +
+    '<div class="bot-meta">' + entries + ' giriş · ' + exits + ' kâr alma<small>' + fmt(bot.amountPerTrade) + ' USDT/işlem · ' + esc(bot.tdMode) + ' ' + esc(bot.leverage) + '×</small></div>' +
     '<div class="bot-actions"><button class="secondary" data-view="' + esc(bot.id) + '">Seviyeler</button>' +
     (['running', 'error'].includes(bot.status) ? '<button class="secondary" data-stop="' + esc(bot.id) + '">Durdur</button>' : '') + '</div>' +
     (bot.error ? '<small class="bot-error">' + esc(bot.error) + '</small>' : '') + '</div>';
@@ -157,7 +157,7 @@ async function showBot(botId) {
       '<div class="modal-grid"><div><small>ALT / ÜST FİYAT</small><strong>' + fmt(bot.minPx) + ' – ' + fmt(bot.maxPx) + '</strong></div>' +
       '<div><small>GRID / HEDEF</small><strong>' + esc(bot.gridNum) + ' / %' + fmt(bot.effectivePct) + '</strong></div>' +
       '<div><small>İŞLEM BAŞI</small><strong>' + fmt(bot.amountPerTrade) + ' USDT</strong></div>' +
-      '<div><small>KALDIRAÇ</small><strong>' + esc(bot.leverage) + '×</strong></div></div>' +
+      '<div><small>MARJİN / KALDIRAÇ</small><strong>' + esc(bot.tdMode) + ' · ' + esc(bot.leverage) + '×</strong></div></div>' +
       (bot.error ? '<p class="bot-error">' + esc(bot.error) + '</p>' : '') +
       '<div class="orders"><p>Açık seviyeler · emir kimliği</p>' + rows + '</div>';
   } catch (error) { $('modal-body').innerHTML = '<p>' + esc(error.message) + '</p>'; }
@@ -180,13 +180,13 @@ async function startBot(event) {
   $('create-error').classList.add('hidden');
   $('create-error').textContent = '';
   const lower = Number(f.minPx), upper = Number(f.maxPx), amount = Number(f.amountPerTrade);
-  const leverage = Number(f.leverage), pct = Number(f.targetPct), last = Number(state.last);
+  const leverage = 10, pct = Number(f.targetPct), last = Number(state.last);
   const count = lower > 0 && upper > lower && pct > 0 ? Math.floor(Math.log(upper / lower) / Math.log1p(pct / 100)) : 0;
   if (!f.instId || !['long', 'short', 'neutral'].includes(f.direction)) return toast('Parite ve yön seçin.', true);
   if (!(lower > 0 && upper > lower && last > lower && last < upper)) return toast('Anlık fiyat alt ve üst fiyatın içinde olmalı.', true);
-  if (!(amount > 0 && amount <= state.limits.maxTrade && leverage >= 1 && leverage <= state.limits.maxLeverage && pct >= 0.1 && pct <= 25 && count >= 2 && count <= 500))
-    return toast('İşlem değeri, kaldıraç veya yüzde izin verilen aralığın dışında.', true);
-  let message = f.instId + ' için ' + directionName(f.direction) + ' limit gridi başlatılacak.\nAralık: ' + fmt(lower) + '–' + fmt(upper) + ' USDT\n' + count + ' grid · yaklaşık %' + fmt(((upper / lower) ** (1 / count) - 1) * 100) + ' aralık · ' + fmt(amount) + ' USDT/işlem · ' + leverage + '× kaldıraç.\n\nEn fazla beş giriş limiti açılır. Bu gerçek işlemdir.';
+  if (!(amount > 0 && amount <= state.limits.maxTrade && pct >= 0.1 && pct <= 25 && count >= 2 && count <= 500))
+    return toast('İşlem değeri veya grid yüzdesi izin verilen aralığın dışında.', true);
+  let message = f.instId + ' için ' + directionName(f.direction) + ' limit gridi başlatılacak.\nAralık: ' + fmt(lower) + '–' + fmt(upper) + ' USDT\n' + count + ' grid · yaklaşık %' + fmt(((upper / lower) ** (1 / count) - 1) * 100) + ' aralık · ' + fmt(amount) + ' USDT/işlem · Cross ' + leverage + '×.\n\nEn fazla beş giriş limiti açılır. Bu gerçek işlemdir.';
   if ($('budget-note').classList.contains('warning')) message += '\n\nUyarı: işlem başı tutar paritenin en küçük sözleşme değerinin altında olabilir.';
   if (f.direction === 'neutral') message += '\n\nNötr yön ayrımı aralığın matematiksel ortasında yapılır: ' + fmt((lower + upper) / 2) + ' USDT.';
   if (!window.confirm(message)) return;
@@ -226,7 +226,6 @@ async function initialize() {
     $('account-state').textContent = boot.configured ? 'Hazır' : 'Eksik';
     document.querySelector('.connection strong').textContent = boot.configured ? 'Canlı OKX bağlantısı' : 'OKX API eksik';
     $('margin-limit').textContent = fmt(boot.limits.maxTrade) + ' USDT';
-    $('leverage').max = String(boot.limits.maxLeverage);
     $('amount').max = String(boot.limits.maxTrade);
     $('connection-pill').textContent = !boot.configured ? 'API EKSİK' : !boot.storageReady ? 'VOLUME EKSİK' : 'CANLI İŞLEM HAZIR';
     $('connection-pill').classList.toggle('error', !boot.configured || !boot.storageReady);

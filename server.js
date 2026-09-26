@@ -26,14 +26,12 @@ const config = {
   passphrase: process.env.OKX_PASSPHRASE,
   site: process.env.OKX_SITE || 'global',
   password: process.env.DASHBOARD_PASSWORD || '',
-  maxLeverage: intEnv(process.env.MAX_LEVERAGE, 5),
   maxActiveBots: intEnv(process.env.MAX_ACTIVE_BOTS, 5)
 };
 const okx = createOkxClient(config);
 const storageReady = Boolean(process.env.DATA_DIR);
 const engine = new ManualGridEngine(okx, process.env.DATA_DIR || path.join(root, 'data'), {
   maxTrade: intEnv(process.env.MAX_TRADE_USDT, 100),
-  maxLeverage: config.maxLeverage,
   maxBots: config.maxActiveBots
 });
 
@@ -126,7 +124,7 @@ async function route(req, res) {
         configured: Boolean(config.password && okx.credentialsReady),
         site: okx.site,
         csrf: loggedIn ? csrfFor(sessionFor(req).token) : null,
-        limits: loggedIn ? { maxTrade: engine.maxTrade, maxLeverage: config.maxLeverage, maxActiveBots: config.maxActiveBots } : null,
+        limits: loggedIn ? { maxTrade: engine.maxTrade, maxActiveBots: config.maxActiveBots } : null,
         storageReady
       });
     }

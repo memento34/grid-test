@@ -45,3 +45,13 @@ test('order lookup uses client ID and cancellation sends the same ID', async () 
   assert(calls[0].url.includes('clOrdId=MG123'));
   assert.deepEqual(JSON.parse(calls[1].options.body), { instId: 'BTC-USDT-SWAP', clOrdId: 'MG123' });
 });
+
+test('cross 10x leverage request omits position side even in hedge mode', async () => {
+  let body;
+  const client = createOkxClient(
+    { site: 'global', apiKey: 'KEY', secretKey: 'SECRET', passphrase: 'PASS' },
+    async (_, options) => { body = JSON.parse(options.body); return response([{ lever: '10', mgnMode: 'cross', sCode: '0' }]); }
+  );
+  await client.setLeverage('BTC-USDT-SWAP', 10, 'cross');
+  assert.deepEqual(body, { instId: 'BTC-USDT-SWAP', lever: '10', mgnMode: 'cross' });
+});

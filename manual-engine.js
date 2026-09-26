@@ -4,6 +4,7 @@ import path from 'node:path';
 
 const ACTIVE = new Set(['running', 'stopping', 'error']);
 const TERMINAL = new Set(['filled', 'canceled', 'mmp_canceled']);
+const FIXED_LEVERAGE = 10;
 
 function problem(message, status = 400) {
   const error = new Error(message);
@@ -94,7 +95,6 @@ export class ManualGridEngine {
     this.dataDir = dataDir;
     this.file = path.join(dataDir, 'manual-grids.json');
     this.maxTrade = limits.maxTrade || 100;
-    this.maxLeverage = limits.maxLeverage || 5;
     this.maxBots = limits.maxBots || 5;
     this.busy = false;
     this.creating = false;
@@ -120,6 +120,7 @@ export class ManualGridEngine {
       id: bot.id, instId: bot.instId, direction: bot.direction, status: bot.status,
       minPx: bot.minPx, maxPx: bot.maxPx, gridNum: bot.gridNum, runType: bot.runType,
       amountPerTrade: bot.amountPerTrade, leverage: bot.leverage,
+      tdMode: bot.tdMode || 'isolated',
       targetPct: bot.targetPct, effectivePct: bot.effectivePct,
       error: bot.error || '', levels: bot.levels.map(level => ({
         index: level.index, direction: level.direction, entryPx: level.entryPx,
@@ -139,8 +140,8 @@ export class ManualGridEngine {
     if (!['long', 'short', 'neutral'].includes(direction)) problem('Yön long, short veya nötr olmalı.');
     const amountPerTrade = positive(input.amountPerTrade, 'İşlem başı değer');
     if (amountPerTrade > this.maxTrade) problem('İşlem başı değer en fazla ' + this.maxTrade + ' USDT olabilir.');
-    const leverage = Number(input.leverage);
-    if (!Number.isInteger(leverage) || leverage < 1 || leverage > this.maxLeverage) problem('Kaldıraç 1–' + this.maxLeverage + ' aralığında olmalı.');
+    const leverage = FIXED_LEVERAGE;
+    const tdMode = 'cross';
     if (this.bots.filter(bot => ACTIVE.has(bot.status)).length >= this.maxBots) problem('Aktif bot sınırına ulaşıldı.', 409);
     if (this.bots.some(bot => bot.instId === instId && ACTIVE.has(bot.status))) problem('Bu paritede zaten bu panelin çalışan bir botu var.', 409);
 
@@ -150,7 +151,7 @@ export class ManualGridEngine {
     if (instrument.ctValCcy !== instId.split('-')[0]) problem('Bu sözleşmenin miktar birimi henüz desteklenmiyor.');
     const plan = deriveGrid(input.minPx, input.maxPx, input.targetPct);
     const settings = {
-      instId, direction, amountPerTrade, leverage,
+      instId, direction, amountPerTrade, leverage, tdMode,
       minPx: String(input.minPx), maxPx: String(input.maxPx),
       targetPct: Number(input.targetPct), effectivePct: plan.effectivePct,
       gridNum: plan.gridNum, runType: '2'
@@ -170,9 +171,10 @@ export class ManualGridEngine {
     if (orders.length) problem('Bu paritede açık normal emir var. Karışmaması için önce bu emirleri yönetin.');
     if (nativeBots.some(bot => bot.instId === instId)) problem('Bu paritede OKX yerel grid botu var. Aynı paritede ikinci bot başlatılmadı.');
 
-    const sides = posMode === 'long_short_mode'
-      ? [...new Set(levels.map(level => level.direction))] : [null];
-    for (const side of sides) await this.okx.setLeverage(instId, leverage, side);
+    const applied = await this.okx.setLeverage(instId, leverage, tdMode);
+    if (Number(applied?.[0]?.lever) !== FIXED_LEVERAGE || applied?.[0]?.mgnMode !== tdMode) {
+      problem('OKX cross 10× kaldıraç ayarını doğrulamadı. Emir gönderilmedi.', 502);
+    }
     const bot = {
       id: randomBytes(6).toString('hex'), ...settings, posMode,
       status: 'running', error: '', seq: 0, createdAt: Date.now(), levels
@@ -231,7 +233,7 @@ export class ManualGridEngine {
     level.phase = isEntry ? 'entering' : 'exiting';
     this.save();
     const body = {
-      instId: bot.instId, tdMode: 'isolated', clOrdId, side,
+      instId: bot.instId, tdMode: bot.tdMode || 'isolated', clOrdId, side,
       ordType: 'limit', px: isEntry ? level.entryPx : level.exitPx,
       sz: String(quantity)
     };

@@ -1,6 +1,6 @@
 {
   "name": "okx-manual-grid-control",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "Railway-ready dynamic futures limit grid for OKX",
   "type": "module",
