@@ -62,7 +62,7 @@ test('cancel acknowledgements still reserve capacity until terminal confirmation
   }finally{x.cleanup();}
 });
 test('net exits reduce-only; neutral net mode rejected',async()=>{
-  const x=setup();try{x.fake.client.accountConfig=async()=>({posMode:'net_mode'});await assert.rejects(x.engine.create({...input,direction:'neutral'}),/hedge/);await x.engine.create(input);await x.engine.tick();const a=x.fake.placed[0];x.fake.fill(a.clOrdId,a.sz);await x.engine.tick();assert.equal(x.fake.placed.find(o=>o.side==='sell').reduceOnly,true);
+  const x=setup();try{x.fake.client.accountConfig=async()=>({posMode:'net_mode'});await assert.rejects(x.engine.create({...input,direction:'neutral',minPx:'50',maxPx:'150',targetPct:'1'}),/hedge/);await x.engine.create(input);await x.engine.tick();const a=x.fake.placed[0];x.fake.fill(a.clOrdId,a.sz);await x.engine.tick();assert.equal(x.fake.placed.find(o=>o.side==='sell').reduceOnly,true);
   }finally{x.cleanup();}
 });
 test('short entry and exit sides are correct',async()=>{
@@ -110,8 +110,9 @@ test('leverage drift and stale quotes block entry submission',async()=>{
   const x=setup();try{await x.engine.create(input);x.fake.client.leverageInfo=async()=>[{lever:'20',mgnMode:'cross'}];await x.engine.tick();assert.equal(x.fake.placed.length,0);assert.equal(x.store.data.bots[0].status,'paused');}finally{x.cleanup();}
   const y=setup();try{await y.engine.create(input);const get=y.fake.client.ticker;y.fake.client.ticker=async()=>({...await get(),ts:String(Date.now()-20000)});await y.engine.tick();assert.equal(y.fake.placed.length,0);}finally{y.cleanup();}
 });
-test('live creation requires explicit confirmation and existing exposure blocks it',async()=>{
-  const x=setup();try{x.fake.client.demo=false;await assert.rejects(x.engine.create(input),/CANLI/);x.fake.client.positions=async()=>[{pos:'1'}];await assert.rejects(x.engine.create({...input,confirm:'CANLI'}),/pozisyon/);assert.equal(x.fake.placed.length,0);}finally{x.cleanup();}
+test('live grid starts without typed confirmation; existing exposure still blocks creation',async()=>{
+  const x=setup();try{x.fake.client.demo=false;await x.engine.create(input);await x.engine.tick();assert.equal(x.fake.placed.length,5);}finally{x.cleanup();}
+  const y=setup();try{y.fake.client.demo=false;y.fake.client.positions=async()=>[{pos:'1'}];await assert.rejects(y.engine.create(input),/pozisyon/);assert.equal(y.fake.placed.length,0);}finally{y.cleanup();}
 });
 test('loss threshold pauses entries without pretending positions were closed',async()=>{
   const x=setup();try{await x.engine.create({...input,maxLoss:'1'});await x.engine.tick();const a=x.fake.placed[0];x.fake.fill(a.clOrdId,a.sz);const positions=x.fake.client.positions;x.fake.client.positions=async()=> (await positions()).map(p=>({...p,upl:'-10'}));await x.engine.tick();x.engine.lastLedgerAttempt=0;await x.engine.syncLedger();await x.engine.tick();const b=x.store.data.bots[0];assert.equal(b.status,'paused');assert(b.levels.some(l=>Number(l.remaining)>0));assert(x.fake.placed.some(o=>o.side==='sell'&&o.ordType==='limit'));assert(!x.fake.placed.some(o=>o.ordType==='market'));}finally{x.cleanup();}

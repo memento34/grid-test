@@ -3,26 +3,42 @@ import { dec,str,add,sub,sum,positive,floorStep,quantityFor } from './decimal.js
 const TERMINAL=new Set(['filled','canceled','mmp_canceled','rejected']);
 const active=o=>!TERMINAL.has(o.state);
 const abs=n=>n<0n?-n:n;
+// Geometric calculations may have >18 decimal places for small-priced assets.
+// Round price intermediates only; exchange quantities and fees remain exact decimals.
+const priceText=value=>str(dec(value>=0.0001?value.toPrecision(15):value.toFixed(18)));
 export function deriveGrid(min,max,pct){
   const lo=positive(min,'Alt fiyat'),hi=positive(max,'Üst fiyat'),p=positive(pct,'Grid yüzdesi');
   if(hi<=lo||p<0.1||p>25)throw new Error('Fiyat aralığı veya yüzde geçersiz (%0,1–25).');
-  const gridNum=Math.floor(Math.log(hi/lo)/Math.log1p(p/100));
+  const ratio=Math.log(hi/lo)/Math.log1p(p/100),nearest=Math.round(ratio);
+  const gridNum=Math.abs(ratio-nearest)<1e-8?nearest:Math.floor(ratio);
   if(gridNum<2||gridNum>500)throw new Error('Grid sayısı 2–500 arasında olmalı.');
   return {gridNum,effectivePct:((hi/lo)**(1/gridNum)-1)*100};
+}
+export function defaultGridRange(price,targetPct=1,below=50,above=50){
+  const center=positive(price,'Anlık fiyat'),pct=positive(targetPct,'Grid yüzdesi');
+  if(!Number.isInteger(below)||!Number.isInteger(above)||below<1||above<1||below+above>500||pct<0.1||pct>25)throw new Error('Otomatik grid parametreleri geçersiz.');
+  const ratio=1+pct/100;
+  const minPx=priceText(center/ratio**below),maxPx=priceText(center*ratio**above);
+  if(!Number.isFinite(Number(minPx))||!Number.isFinite(Number(maxPx)))throw new Error('Otomatik aralık hesaplanamadı.');
+  return {minPx,maxPx,targetPct:pct,gridNum:below+above,below,above,referencePx:String(price)};
 }
 export function buildLevels(c,i){
   if(!['long','short','neutral'].includes(c.direction))throw new Error('Yön geçersiz.');
   for(const k of ['tickSz','lotSz','minSz','ctVal'])positive(i[k],k);
-  const prices=Array.from({length:c.gridNum+1},(_,n)=>floorStep((Number(c.minPx)*(Number(c.maxPx)/Number(c.minPx))**(n/c.gridNum)).toPrecision(15),i.tickSz));
+  const prices=Array.from({length:c.gridNum+1},(_,n)=>floorStep(priceText(Number(c.minPx)*(Number(c.maxPx)/Number(c.minPx))**(n/c.gridNum)),i.tickSz));
   const mid=(Number(c.minPx)+Number(c.maxPx))/2;
-  return prices.slice(0,-1).map((p,n)=>{
+  const levels=[];
+  prices.slice(0,-1).forEach((p,n)=>{
     if(dec(prices[n+1])<=dec(p))throw new Error('Grid aralığı fiyat adımından dar.');
-    const direction=c.direction==='neutral'?(Number(p)<mid?'long':'short'):c.direction;
+    const directions=c.direction==='neutral'&&c.neutralPolicy==='per-side-window'?['long','short']:[c.direction==='neutral'?(Number(p)<mid?'long':'short'):c.direction];
+    for(const direction of directions){
     const entryPx=direction==='long'?p:prices[n+1],exitPx=direction==='long'?prices[n+1]:p;
     const sz=quantityFor(c.amountPerTrade,entryPx,i.ctVal,i.lotSz);
     if(dec(sz)<dec(i.minSz))throw new Error('İşlem tutarı minimum sözleşme miktarına yetmiyor.');
-    return {index:n,direction,entryPx,exitPx,sz,remaining:'0',cycle:0,hadFill:false,retryAt:0};
+    levels.push({index:levels.length,interval:n,direction,entryPx,exitPx,sz,remaining:'0',cycle:0,hadFill:false,retryAt:0});
+    }
   });
+  return levels;
 }
 export class GridEngine {
   constructor(okx,store,alerts,limits={}){
@@ -42,22 +58,32 @@ export class GridEngine {
   issue(bot,code,message,grace=0){this.event(bot,code,message,'critical');this.alerts.raise(bot.id+':'+code,bot.instId+' • '+message,grace);bot.error=message;}
   resolve(bot,code){this.alerts.resolve(bot.id+':'+code);}
   live(bot,level,purpose){return bot.orders.filter(o=>active(o)&&(level===undefined||o.level===level.index)&&(!purpose||o.purpose===purpose));}
+  async defaults(instId){
+    if(!/^[A-Z0-9]+-USDT-SWAP$/.test(instId))throw new Error('Parite geçersiz.');
+    await this.okx.syncTime();const ticker=await this.okx.ticker(instId);this.validateTicker(ticker);
+    return {...defaultGridRange(ticker.last),ticker};
+  }
   async plan(input){
     const instId=String(input.instId||'');if(!/^[A-Z0-9]+-USDT-SWAP$/.test(instId))throw new Error('Yalnızca USDT SWAP desteklenir.');
     const amount=positive(input.amountPerTrade,'İşlem başı USDT');if(amount>this.maxTrade)throw new Error('İşlem başı limit '+this.maxTrade+' USDT.');
-    const maxLevels=Number(input.maxLevels||5);if(!Number.isInteger(maxLevels)||maxLevels<1||maxLevels>5)throw new Error('Açık seviye sınırı 1–5.');
+    const maxLevels=Number(input.maxLevels||5);if(!Number.isInteger(maxLevels)||maxLevels<1||maxLevels>5)throw new Error('Emir penceresi 1–5 olmalı.');
     const maxLoss=Number(input.maxLoss||0);if(!Number.isFinite(maxLoss)||maxLoss<0)throw new Error('Zarar eşiği geçersiz.');
     const instrument=(await this.okx.instruments()).find(i=>i.instId===instId);
     if(!instrument||instrument.ctType!=='linear'||instrument.ctValCcy!==instId.split('-')[0]||instrument.settleCcy!=='USDT')throw new Error('Canlı USDT doğrusal sözleşme bulunamadı.');
-    const settings={instId,direction:input.direction,minPx:String(input.minPx),maxPx:String(input.maxPx),targetPct:Number(input.targetPct),...deriveGrid(input.minPx,input.maxPx,input.targetPct),amountPerTrade:String(input.amountPerTrade),maxLevels,maxLoss,tdMode:'cross',leverage:10};
+    const settings={instId,direction:input.direction,minPx:String(input.minPx),maxPx:String(input.maxPx),targetPct:Number(input.targetPct),...deriveGrid(input.minPx,input.maxPx,input.targetPct),amountPerTrade:String(input.amountPerTrade),maxLevels,maxLoss,tdMode:'cross',leverage:10,...(input.direction==='neutral'?{neutralPolicy:'per-side-window'}:{})};
     const levels=buildLevels(settings,instrument),ticker=await this.okx.ticker(instId);this.validateTicker(ticker);
     if(Number(ticker.last)<=Number(settings.minPx)||Number(ticker.last)>=Number(settings.maxPx))throw new Error('Anlık fiyat grid aralığının içinde olmalı.');
-    return {settings,instrument,levels,ticker,maxEntryNotional:amount*maxLevels,approxInitialMargin:amount*maxLevels/10};
+    if(settings.neutralPolicy){
+      const split=Math.round(Math.log(Number(ticker.last)/Number(settings.minPx))/Math.log(Number(settings.maxPx)/Number(settings.minPx))*settings.gridNum);
+      settings.neutralCaps={long:Math.max(1,Math.min(settings.gridNum-1,split)),short:settings.gridNum-Math.max(1,Math.min(settings.gridNum-1,split))};
+      if(Math.min(settings.neutralCaps.long,settings.neutralCaps.short)<maxLevels)throw new Error('Aralık seçilen giriş penceresi için her yönde yeterli grid içermiyor.');
+    }
+    const initialSlots=maxLevels*(settings.neutralPolicy?2:1),maxReservedSlots=settings.neutralPolicy?settings.gridNum:maxLevels;
+    return {settings,instrument,levels,ticker,maxEntryNotional:amount*initialSlots,approxInitialMargin:amount*initialSlots/10,maxReservedNotional:amount*maxReservedSlots,approxMaxMargin:amount*maxReservedSlots/10};
   }
   validateTicker(t){for(const k of ['last','bidPx','askPx'])positive(t[k],k);if(Number(t.bidPx)>Number(t.askPx)||!Number.isFinite(Number(t.ts))||Math.abs(this.exchangeNow()-Number(t.ts))>15000)throw new Error('Piyasa fiyatı eski veya geçersiz.');}
   create(input){return this.exclusive(async()=>{
     if(this.fatal)throw new Error(this.fatal);
-    if(!this.okx.demo&&input.confirm!=='CANLI')throw new Error('Canlı başlatma için CANLI onayı gerekli.');
     const bots=this.store.data.bots;
     if(bots.filter(b=>b.status!=='stopped').length>=this.maxBots)throw new Error('Aktif bot sınırına ulaşıldı.');
     if(bots.some(b=>b.instId===input.instId&&b.status!=='stopped'))throw new Error('Paritede mevcut bot var.');
@@ -79,7 +105,7 @@ export class GridEngine {
     if(action==='resume'){
       if(this.fatal||b.ownershipLost||!b.matched||Date.now()-b.snapshotAt>15000||this.live(b).some(o=>o.uncertain)||this.ledgerError)throw new Error('Devam etmek için güncel mutabakat ve eksiksiz kayıt gerekir.');
       if(b.status==='stopped')throw new Error('Tamamlanmış bot yeniden başlatılamaz.');
-      b.status='running';b.error='';for(const key of ['entry','exit','api','unknown','risk'])this.resolve(b,key);
+      b.status='running';b.error='';for(const key of ['entry','exit','api','unknown','risk','engine','position'])this.resolve(b,key);
     }else if(action==='pause')b.status='paused';
     else if(action==='stop'){if(b.status==='stopped')return;b.status='stopping';}
     else throw new Error('Komut geçersiz.');
@@ -102,6 +128,7 @@ export class GridEngine {
       if(e.uncertain!==false){o.state='unknown';o.uncertain=true;this.issue(b,'unknown','Emir sonucu belirsiz: '+o.clOrdId+'. Aynı emir tekrar gönderilmeyecek.');}
       else{o.state='rejected';o.uncertain=false;o.finishedAt=Date.now();l.retryAt=Date.now()+30000;this.issue(b,purpose,(entry?'Giriş':'Kâr alma')+' emri reddedildi: '+e.message);}
       b.status=b.status==='stopping'?'stopping':'paused';
+      this.event(b,'paused','Yeni girişler hata nedeniyle duraklatıldı. Pozisyonlar piyasa emriyle kapatılmadı; doğrulanmış kâr alma emirleri yönetilmeye devam eder.');
     }
     this.save();
   }
@@ -190,18 +217,26 @@ export class GridEngine {
     const ticker=await this.okx.ticker(b.instId);this.validateTicker(ticker);b.ticker=ticker;
     const pnl=this.pnl(b);
     if(b.maxLoss>0&&pnl.total!==null&&Number(pnl.total)<=-b.maxLoss){b.status='paused';this.issue(b,'risk','Zarar eşiği aşıldı; girişler durduruldu. Açık pozisyonlar piyasa emriyle kapatılmadı.');for(const o of this.live(b,undefined,'entry'))await this.cancel(b,o);this.save();return;}
-    const occupied=b.levels.filter(l=>dec(l.remaining)>0n||this.live(b,l).some(o=>o.purpose==='exit')).length;
-    const capacity=Math.max(0,b.maxLevels-occupied);
-    const candidates=b.levels.filter(l=>dec(l.remaining)===0n&&!this.live(b,l,'exit').length&&Date.now()>=l.retryAt)
+    const perSide=b.direction==='neutral'&&b.neutralPolicy==='per-side-window';
+    const pools=perSide?['long','short']:[null];
+    const candidates=pools.flatMap(side=>{
+      const pool=b.levels.filter(l=>!side||l.direction===side);
+      const occupied=pool.filter(l=>dec(l.remaining)>0n||this.live(b,l).some(o=>o.purpose==='exit')).length;
+      const capacity=perSide?Math.min(b.maxLevels,Math.max(0,b.neutralCaps[side]-occupied)):Math.max(0,b.maxLevels-occupied);
+      return pool.filter(l=>dec(l.remaining)===0n&&!this.live(b,l,'exit').length&&Date.now()>=l.retryAt)
       .filter(l=>l.direction==='long'?Number(l.entryPx)<Number(ticker.bidPx):Number(l.entryPx)>Number(ticker.askPx))
       .sort((a,z)=>Math.abs(Number(a.entryPx)-Number(ticker.last))-Math.abs(Number(z.entryPx)-Number(ticker.last))).slice(0,capacity);
+    });
     const wanted=new Set(candidates.map(l=>l.index));
     for(const o of this.live(b,undefined,'entry'))if(!wanted.has(o.level))await this.cancel(b,o);
     // Count every reserved level, including entries waiting for cancel confirmation.
     for(const l of candidates){
       if(this.live(b,l).length)continue;
-      const used=b.levels.filter(x=>dec(x.remaining)>0n||this.live(b,x).length).length;
-      if(used>=b.maxLevels||b.status!=='running')break;
+      const pool=b.levels.filter(x=>!perSide||x.direction===l.direction);
+      const used=pool.filter(x=>dec(x.remaining)>0n||this.live(b,x).length).length;
+      const pending=pool.filter(x=>this.live(b,x,'entry').length).length;
+      if(b.status!=='running')break;
+      if(used>=(perSide?b.neutralCaps[l.direction]:b.maxLevels)||perSide&&pending>=b.maxLevels)continue;
       await this.place(b,l,'entry',l.sz);
     }
     if(b.status==='running')b.error='';this.save();

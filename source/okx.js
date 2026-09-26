@@ -3,15 +3,20 @@ const SITES = { global:'https://www.okx.com', eea:'https://eea.okx.com', us:'htt
 export class OkxError extends Error {
   constructor(message, code = '', uncertain = false) { super(message); this.code = String(code); this.uncertain = uncertain; this.status = 502; }
 }
-export function createOkxClient(config, request = fetch) {
+export function createOkxClient(config, request = fetch, clock = Date.now) {
   if (!SITES[config.site || 'global']) throw new Error('OKX_SITE geçersiz.');
   const base = SITES[config.site || 'global'];
   const credentialsReady = !!(config.apiKey && config.secretKey && config.passphrase);
   let offset = 0, syncAt = 0;
+  function exchangeTime(){
+    const value=Math.round(clock()+offset);
+    if(!Number.isSafeInteger(value)||value<1e12)throw new OkxError('Geçersiz sunucu zamanı.','CLOCK');
+    return value;
+  }
   const lanes = new Map();
   async function throttle(endpoint) {
     const interval = endpoint.includes('bills') ? 450 : 120;
-    const now = Date.now(), next = Math.max(now, lanes.get(endpoint) || 0);
+    const now = clock(), next = Math.max(now, lanes.get(endpoint) || 0);
     lanes.set(endpoint, next + interval);
     if (next > now) await new Promise(r => setTimeout(r, next - now));
   }
@@ -22,11 +27,12 @@ export function createOkxClient(config, request = fetch) {
     const route = endpoint + query, body = method === 'POST' ? JSON.stringify(params || {}) : '';
     const headers = { Accept:'application/json' };
     if (body) headers['Content-Type'] = 'application/json';
-    if (config.demo !== false) headers['x-simulated-trading'] = '1';
+    if (config.demo === true) headers['x-simulated-trading'] = '1';
     if (auth) {
-      const timestamp = new Date(Date.now() + offset).toISOString();
+      const requestTime=exchangeTime(),timestamp = new Date(requestTime).toISOString();
       Object.assign(headers, {'OK-ACCESS-KEY':config.apiKey,'OK-ACCESS-PASSPHRASE':config.passphrase,'OK-ACCESS-TIMESTAMP':timestamp,'OK-ACCESS-SIGN':createHmac('sha256',config.secretKey).update(timestamp+method+route+body).digest('base64')});
-      if (endpoint === '/api/v5/trade/order' && method === 'POST') headers.expTime = String(Date.now()+offset+10000);
+      // One integer epoch timestamp for signing and expiry; midpoint RTT may be .5 ms.
+      if (endpoint === '/api/v5/trade/order' && method === 'POST') headers.expTime = String(requestTime+10000);
     }
     let response, result;
     try { response = await request(base+route,{method,headers,body:body||undefined,signal:AbortSignal.timeout(10000),redirect:'error'}); }
@@ -56,13 +62,13 @@ export function createOkxClient(config, request = fetch) {
     throw new OkxError('Sayfalama sınırı aşıldı; veri eksik.','PAGINATION');
   }
   return {
-    site:config.site||'global', demo:config.demo!==false, credentialsReady, call, now:()=>Math.round(Date.now()+offset),
+    site:config.site||'global', demo:config.demo===true, credentialsReady, call, now:exchangeTime,
     async syncTime() {
-      if (Date.now()-syncAt<60000) return;
-      const start=Date.now(), rows=await call('GET','/api/v5/public/time');
+      if (clock()-syncAt<60000) return;
+      const start=clock(), rows=await call('GET','/api/v5/public/time');
       const server=Number(rows[0]?.ts);
       if (!Number.isFinite(server)||server<1e12) throw new OkxError('Sunucu saati alınamadı.','CLOCK');
-      offset=server-(start+Date.now())/2; syncAt=Date.now();
+      offset=Math.round(server-(start+clock())/2); syncAt=clock();
     },
     instruments:()=>call('GET','/api/v5/public/instruments',{instType:'SWAP'}).then(rows=>rows.filter(x=>x.state==='live'&&x.instId.endsWith('-USDT-SWAP')&&x.ctType==='linear')),
     ticker:instId=>call('GET','/api/v5/market/ticker',{instId}).then(x=>{if(!x[0])throw new OkxError('Fiyat yok.');return x[0];}),

@@ -2,6 +2,10 @@
 
 İncelenen kaynak: kullanıcının verdiği `okx-manual-grid-cross10-v2.1.zip`. Kodun README açıklamaları uygulamanın davranışını anlamak için okundu; canlı işlem açılması için talimat kabul edilmedi. İnceleme sırasında canlı emir veya gerçek Telegram mesajı gönderilmedi.
 
+## v3.1 güncel düzeltme
+
+Ekran görüntüsündeki 51000 expTime hatasının kodda yeniden üretilen nedeni, saat eşitleme hesabının .5 milisaniye üretip emir başlığında kesirli Unix zamanı gönderebilmesidir. v3.1 saat farkını ve emir zamanını tam sayıya yuvarlar; imza ve expTime aynı zaman örneğinden oluşturulur. Tek milisaniyelik yanıt süresiyle hem short giriş hem çıkış regresyon testi eklendi. Ayrıntılar `DEGISIKLIKLER-v3.1.md` dosyasındadır.
+
 ## Önemli bulgular
 
 | Önem | v2.1 bulgusu | Etki | v3 yaklaşımı |
@@ -24,7 +28,7 @@
 ## Korunan ve açıklığa kavuşturulan davranışlar
 
 - v2 normal limit giriş kullanıyordu. v3 girişleri post-only yapar; ani fiyat hareketinde taker giriş yerine borsa iptali görülebilir. Çıkışlar normal limit olarak kalır.
-- İşlem başı USDT nominal emir değeridir. Cross 10× bunu yeniden onla çarpmaz. En çok beş seviyenin başlangıç nominali sınırlanır; fiyat değiştikçe açık pozisyonun mark nominali değişebilir.
+- İşlem başı USDT nominal emir değeridir. Cross 10× bunu yeniden onla çarpmaz. Long/short modunda en çok beş seviye, yeni nötr modda yön başına beş bekleyen giriş ve ayrı toplam grid kapasitesi uygulanır; fiyat değiştikçe açık pozisyonun mark nominali değişebilir.
 - Pencere rotasyonunda iptal istenen girişler terminal onay gelene kadar kapasite kullanır.
 - Durdurma, zarar eşiği ve pause işlemleri pozisyonu piyasa emriyle kapatmaz. Hedef kâr fiyatına dönmeyen bir pozisyon süresiz açık kalabilir.
 - Kâr alma da yazılımın gönderdiği normal emirdir. Süreç durursa daha önce gönderilmiş emirler kalır; yeni dolan girişler için çıkış kurulamaz. WebSocket veya bağımsız borsa stop-loss'u uygulanmamıştır.
@@ -40,7 +44,7 @@ Tek tek grid seviyelerindeki OKX PnL'si borsanın birleştirilmiş pozisyon mali
 
 ## Test sonucu
 
-35 otomatik test başarıyla geçti. Finansal tutarlar ve emir senaryoları taklit borsa yanıtlarıyla denendi. Kabul edildikten hemen sonra disk yazma hatası olan emir, yeniden başlatmada aynı kimlikle bulundu; yeniden gönderilmedi. Beş girişin aynı anda dolması, çıkışların kısmi dolup iptal olması, regrese dolum verisi, dış işlem ve pozisyon uyuşmazlıkları test edildi.
+49 otomatik test başarıyla geçti. Finansal tutarlar ve emir senaryoları taklit borsa yanıtlarıyla denendi. Kabul edildikten hemen sonra disk yazma hatası olan emir, yeniden başlatmada aynı kimlikle bulundu; yeniden gönderilmedi. Beş girişin aynı anda dolması, çıkışların kısmi dolup iptal olması, regrese dolum verisi, dış işlem ve pozisyon uyuşmazlıkları test edildi.
 
 Telegram testleri gerçek mesaj göndermeden 429 geri çekilmesini, geçici hataların çözülmesini, tekrar sınırlarını, birleştirmeyi ve gizli alan temizliğini doğruladı. HTTP testleri oturum, CSRF, Origin ve dışa aktarma korumasını kapsadı. 1440 px masaüstü ve 390 px mobil tarayıcıda görsel/etkileşim kontrolü yapıldı.
 

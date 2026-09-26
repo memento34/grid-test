@@ -7,7 +7,7 @@ const cls=v=>Number(v)>0?'positive':Number(v)<0?'negative':'';
 const date=t=>t?new Date(t).toLocaleString('tr-TR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
 const states={running:'ÇALIŞIYOR',paused:'DURAKLATILDI',stopping:'ÇIKIŞ BEKLİYOR',stopped:'TAMAMLANDI'};
 const direction={long:'Long',short:'Short',neutral:'Nötr'};
-let config={},state=null,selected='',refreshing=false,previewSignature='',pending=false;
+let config={},state=null,selected='',refreshing=false,previewSignature='',pending=false,defaultsRequest=0,formRevision=0;
 async function api(url,method='GET',body){
   const response=await fetch(url,{method,credentials:'same-origin',headers:{'Content-Type':'application/json',...(method==='POST'?{'X-CSRF-Token':config.csrf||''}:{})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(120000)});
   const result=await response.json();
@@ -17,7 +17,7 @@ function toast(message){$('toast').textContent=message;$('toast').hidden=false;s
 function showLogin(){$('workspace').hidden=true;$('loginView').hidden=false;}
 async function boot(){
   try{config=await api('/api/bootstrap');if(!config.loggedIn){showLogin();return;}
-    $('loginView').hidden=true;$('workspace').hidden=false;$('modeBadge').textContent=config.demo?'DEMO':'CANLI';$('modeBadge').className='badge'+(config.demo?'':' live');$('siteLabel').textContent=config.site.toUpperCase()+' · REST v5';$('liveConfirm').hidden=config.demo;await refresh();
+    $('loginView').hidden=true;$('workspace').hidden=false;$('modeBadge').textContent=config.demo?'DEMO':'CANLI';$('modeBadge').className='badge'+(config.demo?'':' live');$('siteLabel').textContent=config.site.toUpperCase()+' · REST v5';await refresh();
   }catch(e){$('loginError').textContent=e.message;}
 }
 function metric(id,value){$(id).textContent=money(value);$(id).className=cls(value);}
@@ -31,14 +31,16 @@ function render(){
   const warnings=[!config.storageReady?'Kalıcı DATA_DIR tanımlı değil. Yeni bot başlatılamaz.':'',!config.configured?'OKX API veya panel yapılandırması eksik.':'',state.health.fatal,state.health.ledgerError,bots.some(b=>b.ownershipLost)?'Pozisyon sahipliği uyuşmazlığı var. OKX üzerinden inceleme gerekiyor.':''].filter(Boolean);
   $('globalWarning').hidden=!warnings.length;$('globalWarning').textContent=warnings.join('\n');
   $('botList').innerHTML=bots.length?bots.slice().reverse().map(b=>{
-    const p=b.pnl,filled=b.levels.filter(l=>Number(l.remaining)>0).length;
-    return '<article class="bot-card"><div class="bot-top"><div class="symbol-wrap"><div class="symbol-icon">'+esc(b.instId.slice(0,1))+'</div><div><div class="symbol">'+esc(b.instId.replace('-SWAP',''))+'</div><p>'+esc(direction[b.direction])+' · Cross 10× · '+b.gridNum+' grid</p></div></div><span class="state-pill '+esc(b.status)+'">'+esc(states[b.status]||b.status)+'</span></div><div class="bot-stats"><div><span class="stat-label">Net PnL · USDT</span><span class="stat-value '+cls(p.total)+'">'+money(p.total)+'</span></div><div><span class="stat-label">Komisyon / iade</span><span class="stat-value '+cls(p.fees)+'">'+money(p.fees)+'</span></div><div><span class="stat-label">Funding · USDT</span><span class="stat-value '+cls(p.funding)+'">'+money(p.funding)+'</span></div></div><div class="bot-sub"><span>'+n(b.minPx)+' — '+n(b.maxPx)+'</span><span>'+filled+'/'+b.maxLevels+' açık seviye · '+b.activeOrders.length+' emir</span></div>'+(!p.complete?'<p class="bot-error">PnL kısmi: '+esc(p.issues.join(' · '))+'</p>':'')+(b.error?'<p class="bot-error">'+esc(b.error)+'</p>':'')+'<div class="bot-actions">'+(b.status==='running'?'<button class="ghost" data-action="pause" data-id="'+b.id+'">Ⅱ Duraklat</button>':b.status==='paused'?'<button class="ghost" data-action="resume" data-id="'+b.id+'">▷ Devam et</button>':'')+(b.status!=='stopped'&&b.status!=='stopping'?'<button class="ghost" data-action="stop" data-id="'+b.id+'">Girişleri bitir</button>':'')+'<button class="ghost detail-button" data-action="detail" data-id="'+b.id+'">Detaylar ↗</button></div></article>';
+    const p=b.pnl,filled=b.levels.filter(l=>Number(l.remaining)>0).length,capacity=b.neutralCaps?b.neutralCaps.long+b.neutralCaps.short:b.maxLevels;
+    const longPending=b.activeOrders.filter(o=>o.purpose==='entry'&&b.levels[o.level].direction==='long').length,shortPending=b.activeOrders.filter(o=>o.purpose==='entry'&&b.levels[o.level].direction==='short').length;
+    const windowNote=b.neutralPolicy==='per-side-window'?'<p class="detail-info">Bekleyen giriş: '+longPending+'/'+b.maxLevels+' long · '+shortPending+'/'+b.maxLevels+' short. Pozisyon + giriş kapasitesi: '+b.neutralCaps.long+' long / '+b.neutralCaps.short+' short.</p>':'';
+    return '<article class="bot-card"><div class="bot-top"><div class="symbol-wrap"><div class="symbol-icon">'+esc(b.instId.slice(0,1))+'</div><div><div class="symbol">'+esc(b.instId.replace('-SWAP',''))+'</div><p>'+esc(direction[b.direction])+' · Cross 10× · '+b.gridNum+' grid</p></div></div><span class="state-pill '+esc(b.status)+'">'+esc(states[b.status]||b.status)+'</span></div><div class="bot-stats"><div><span class="stat-label">Net PnL · USDT</span><span class="stat-value '+cls(p.total)+'">'+money(p.total)+'</span></div><div><span class="stat-label">Komisyon / iade</span><span class="stat-value '+cls(p.fees)+'">'+money(p.fees)+'</span></div><div><span class="stat-label">Funding · USDT</span><span class="stat-value '+cls(p.funding)+'">'+money(p.funding)+'</span></div></div><div class="bot-sub"><span>'+n(b.minPx)+' — '+n(b.maxPx)+'</span><span>'+filled+'/'+capacity+' açık seviye · '+b.activeOrders.length+' emir</span></div>'+(!p.complete?'<p class="bot-error">PnL kısmi: '+esc(p.issues.join(' · '))+'</p>':'')+(b.error?'<p class="bot-error">'+esc(b.error)+'</p>':'')+windowNote+'<div class="bot-actions">'+(b.status==='running'?'<button class="ghost" data-action="pause" data-id="'+b.id+'">Ⅱ Duraklat</button>':b.status==='paused'?'<button class="ghost" data-action="resume" data-id="'+b.id+'">▷ Devam et</button>':'')+(b.status!=='stopped'&&b.status!=='stopping'?'<button class="ghost" data-action="stop" data-id="'+b.id+'">Girişleri bitir</button>':'')+'<button class="ghost detail-button" data-action="detail" data-id="'+b.id+'">Detaylar ↗</button></div></article>';
   }).join(''):'<div class="empty"><div class="empty-icon">▦</div><h3>İlk gridin için hazır</h3><p>Bir fiyat aralığı belirle. Emir dolumları ve gerçek net performans burada görünür.</p><button class="primary" data-action="create">＋ Grid oluştur</button></div>';
   const fresh=state.health.lastTick&&Date.now()-state.health.lastTick<60000;
   $('syncStatus').textContent=fresh?'Senkronize':'Senkronizasyon bekleniyor';$('healthDot').className='dot'+(fresh&&!state.health.fatal?'':' warning');
   const tg=state.health.telegram;
   $('healthRows').innerHTML=[['Emir döngüsü',fresh?'Güncel':'Bekliyor'],['Son döngü süresi',n(state.health.duration/1000,1)+' sn'],['Muhasebe',state.health.ledgerError?'Veri eksik':date(state.health.ledgerThrough)],['Telegram',tg.error?'İletim hatası':tg.enabled?'Bağlantı ayarlı':'Ayarlanmadı'],['Kalıcı kayıt',state.health.fatal?'Yazma hatası':config.storageReady?'Yol tanımlı':'Eksik']].map(([k,v])=>'<div class="health-row"><span>'+k+'</span><b>'+esc(v)+'</b></div>').join('');
-  $('telegramInfo').textContent=tg.error||(!tg.enabled?'TELEGRAM_BOT_TOKEN ve TELEGRAM_CHAT_ID değişkenlerini ekleyin.':'Aynı hata en fazla saatlik; mesajlar en az 5 dakika arayla birleştirilir.');
+  $('telegramInfo').textContent=tg.error||(!tg.enabled?'TELEGRAM_BOT_TOKEN ve TELEGRAM_CHAT_ID değişkenlerini ekleyin.':(tg.startupSentAt?'Başlangıç mesajı iletildi. ':'Başlangıç sağlık mesajı bekleniyor. ')+'Sonrasında ciddi hatalar: aynı hata en fazla saatlik; toplu mesajlar en az 5 dakika arayla.');
   $('lastUpdate').textContent='Panel: '+new Date().toLocaleTimeString('tr-TR');renderEvents();if(selected)renderDetail();
 }
 function renderEvents(){
@@ -55,10 +57,24 @@ function renderDetail(){
 async function refresh(){if(refreshing||$('workspace').hidden)return;refreshing=true;try{state=await api('/api/state');render();}catch(e){$('globalWarning').hidden=false;$('globalWarning').textContent='VERİ GÜNCELLENEMİYOR: '+e.message+' Ekrandaki değerler eski olabilir.';$('syncStatus').textContent='Bağlantı kesildi';}finally{refreshing=false;}}
 async function openCreate(){
   $('createError').textContent='';$('previewResult').hidden=true;$('startButton').disabled=true;previewSignature='';$('createDialog').showModal();
-  try{const r=await api('/api/instruments');$('instrument').innerHTML=r.instruments.map(i=>'<option>'+esc(i.instId)+'</option>').join('');$('createForm').elements.amountPerTrade.max=config.limits.maxTrade;}catch(e){$('createError').textContent=e.message;}
+  try{const previous=$('instrument').value,r=await api('/api/instruments');$('instrument').innerHTML=r.instruments.map(i=>'<option>'+esc(i.instId)+'</option>').join('');if(r.instruments.some(i=>i.instId===previous))$('instrument').value=previous;else if(r.instruments.some(i=>i.instId==='BTC-USDT-SWAP'))$('instrument').value='BTC-USDT-SWAP';$('createForm').elements.amountPerTrade.max=config.limits.maxTrade;updateDirection();await fillDefaults();}catch(e){$('createError').textContent=e.message;}
+}
+function updateDirection(){const neutral=$('direction').value==='neutral';$('windowLabel').textContent=neutral?'Yön başına bekleyen giriş':'Açık seviye sınırı';$('neutralInfo').hidden=!neutral;}
+async function fillDefaults(){
+  const requestId=++defaultsRequest,instId=$('instrument').value,revision=formRevision;
+  const form=$('createForm');form.elements.minPx.value='';form.elements.maxPx.value='';form.elements.targetPct.value='1';
+  previewSignature='';$('previewResult').hidden=true;$('startButton').disabled=true;$('previewButton').disabled=true;$('resetRange').disabled=true;$('rangeInfo').textContent='OKX anlık fiyatı alınıyor…';$('createError').textContent='';
+  try{
+    const range=await api('/api/defaults?instId='+encodeURIComponent(instId));
+    if(requestId!==defaultsRequest||instId!==$('instrument').value||!$('createDialog').open)return;
+    if(revision!==formRevision){$('rangeInfo').textContent='Elle yaptığınız değişiklikler korundu. Otomatik aralığı yeniden hesaplayabilirsiniz.';return;}
+    form.elements.minPx.value=range.minPx;form.elements.maxPx.value=range.maxPx;form.elements.targetPct.value=String(range.targetPct);
+    $('rangeInfo').textContent='Referans '+n(range.referencePx)+' USDT · %1 × 50 aşağı / 50 yukarı · 100 aralık. Alanlar düzenlenebilir.';
+  }catch(e){if(requestId===defaultsRequest){$('rangeInfo').textContent='Anlık fiyat alınamadı; aralığı elle girin veya tekrar hesaplayın.';$('createError').textContent=e.message;}}
+  finally{if(requestId===defaultsRequest){$('previewButton').disabled=false;$('resetRange').disabled=false;}}
 }
 const formData=()=>Object.fromEntries(new FormData($('createForm')));
-const signature=data=>JSON.stringify(Object.entries(data).filter(([k])=>k!=='confirm'));
+const signature=data=>JSON.stringify(data);
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;try{await api('/api/login','POST',{password:$('password').value});$('password').value='';$('loginError').textContent='';await boot();}catch(error){$('loginError').textContent=error.message;}finally{button.disabled=false;}});
 $('logout').addEventListener('click',async()=>{try{await api('/api/logout','POST',{});showLogin();}catch(e){toast(e.message);}});
 $('refresh').addEventListener('click',refresh);$('eventFilter').addEventListener('change',renderEvents);$('newBot').addEventListener('click',openCreate);$('closeCreate').addEventListener('click',()=>{if(!pending)$('createDialog').close();});$('closeDetail').addEventListener('click',()=>{selected='';$('detailPanel').hidden=true;});
@@ -68,13 +84,14 @@ $('botList').addEventListener('click',async e=>{
   if(action==='stop'&&!confirm('Yeni girişler iptal edilecek. Açık pozisyonlar kâr alma fiyatına ulaşana kadar açık kalacak. Devam edilsin mi?'))return;
   button.disabled=true;try{await api('/api/bots/'+id+'/'+action,'POST',{});toast('Komut kaydedildi. Sonraki emir döngüsünde uygulanacak.');await refresh();}catch(error){toast(error.message);}finally{button.disabled=false;}
 });
-$('createForm').addEventListener('input',()=>{if(previewSignature!==signature(formData())){$('startButton').disabled=true;$('previewResult').hidden=true;}});
+$('createForm').addEventListener('input',e=>{if(['minPx','maxPx','targetPct'].includes(e.target.name))formRevision++;if(previewSignature!==signature(formData())){$('startButton').disabled=true;$('previewResult').hidden=true;}});
+$('instrument').addEventListener('change',fillDefaults);$('resetRange').addEventListener('click',fillDefaults);$('direction').addEventListener('change',updateDirection);
 $('previewButton').addEventListener('click',async()=>{
   if(!$('createForm').reportValidity())return;const data=formData();$('previewButton').disabled=true;$('createError').textContent='';
-  try{const p=await api('/api/preview','POST',data);if(signature(data)!==signature(formData()))return;previewSignature=signature(data);$('previewResult').innerHTML='<div class="preview-summary"><b>'+p.settings.gridNum+' grid · gerçek aralık %'+n(p.settings.effectivePct,3)+'</b><br>Son fiyat: '+n(p.ticker.last)+' USDT<br>En fazla başlangıç emir değeri: '+n(p.maxEntryNotional)+' USDT<br>Yaklaşık başlangıç marjini: '+n(p.approxInitialMargin)+' USDT (+ komisyon / güvenlik payı)<br>Başlatırken pozisyon, emirler ve bakiye yeniden kontrol edilir.</div>';$('previewResult').hidden=false;$('startButton').disabled=false;}catch(e){$('createError').textContent=e.message;}finally{$('previewButton').disabled=false;}
+  try{const p=await api('/api/preview','POST',data);if(signature(data)!==signature(formData()))return;previewSignature=signature(data);$('previewResult').innerHTML='<div class="preview-summary"><b>'+p.settings.gridNum+' grid · gerçek aralık %'+n(p.settings.effectivePct,3)+'</b><br>Son fiyat: '+n(p.ticker.last)+' USDT<br>En fazla başlangıç emir değeri: '+n(p.maxEntryNotional)+' USDT<br>Yaklaşık başlangıç marjini: '+n(p.approxInitialMargin)+' USDT (+ komisyon / güvenlik payı)<br>Gridler birikirse azami ayrılabilecek emir/pozisyon nominali: '+n(p.maxReservedNotional)+' USDT (yaklaşık marjin '+n(p.approxMaxMargin)+' USDT).'+(p.settings.neutralCaps?'<br>Nötr kapasite: '+p.settings.neutralCaps.long+' long / '+p.settings.neutralCaps.short+' short · yön başına '+p.settings.maxLevels+' bekleyen giriş.':'')+'<br>Başlatırken pozisyon, emirler ve bakiye yeniden kontrol edilir.</div>';$('previewResult').hidden=false;$('startButton').disabled=false;}catch(e){$('createError').textContent=e.message;}finally{$('previewButton').disabled=false;}
 });
 $('createForm').addEventListener('submit',async e=>{
-  e.preventDefault();if(pending)return;const data=formData();if(signature(data)!==previewSignature){$('createError').textContent='Önce güncel planı hesaplayın.';return;}if(!config.demo&&data.confirm!=='CANLI'){$('createError').textContent='CANLI yazarak onaylayın.';return;}
+  e.preventDefault();if(pending)return;const data=formData();if(signature(data)!==previewSignature){$('createError').textContent='Önce güncel planı hesaplayın.';return;}
   pending=true;$('startButton').disabled=true;$('closeCreate').disabled=true;$('createError').textContent='Hesap ve emir kontrolleri yapılıyor…';
   try{const r=await api('/api/bots','POST',data);selected=r.id;$('createDialog').close();toast('Grid kaydedildi. Emir yönetimi başlıyor.');await refresh();}catch(e){$('createError').textContent=e.message+' Başlatma yanıtı belirsizse tekrar denemeden önce strateji listesini yenileyin.';await refresh();}finally{pending=false;$('closeCreate').disabled=false;previewSignature='';}
 });

@@ -14,14 +14,26 @@ const safeEqual=(a,b)=>timingSafeEqual(createHash('sha256').update(String(a)).di
 const intEnv=(v,d)=>Number.isInteger(Number(v))&&Number(v)>0?Number(v):d;
 export function createApp(env=process.env,dependencies={}){
   if(!['true','false',undefined].includes(env.OKX_DEMO))throw new Error('OKX_DEMO true veya false olmalı.');
-  const config={apiKey:env.OKX_API_KEY,secretKey:env.OKX_SECRET_KEY,passphrase:env.OKX_PASSPHRASE,site:env.OKX_SITE||'global',demo:env.OKX_DEMO!=='false'};
+  const config={apiKey:env.OKX_API_KEY,secretKey:env.OKX_SECRET_KEY,passphrase:env.OKX_PASSPHRASE,site:env.OKX_SITE||'global',demo:env.OKX_DEMO==='true'};
   const okx=dependencies.okx||createOkxClient(config),storageReady=!!env.DATA_DIR;
   const identity=createHash('sha256').update([config.site,config.demo,config.apiKey||'unconfigured'].join(':')).digest('hex');
   const store=dependencies.store||new Store(env.DATA_DIR||path.join(root,'data'),identity);
   const alerts=dependencies.alerts||new Alerts(store,{token:env.TELEGRAM_BOT_TOKEN,chatId:env.TELEGRAM_CHAT_ID,demo:config.demo,cooldownMinutes:env.TELEGRAM_COOLDOWN_MINUTES,secrets:[config.apiKey,config.secretKey,config.passphrase,env.TELEGRAM_BOT_TOKEN]});
   const engine=dependencies.engine||new GridEngine(okx,store,alerts,{maxTrade:intEnv(env.MAX_TRADE_USDT,100),maxBots:intEnv(env.MAX_ACTIVE_BOTS,5)});
   const sessions=new Map(),attempts=new Map(),sessionKey=randomBytes(32);
-  let shuttingDown=false;const bootAt=Date.now();
+  let shuttingDown=false,lastStartupCheck=0;const bootAt=Date.now();
+  async function checkStartup(){
+    if(shuttingDown||!alerts.enabled||store.data.telegramStartup?.sentAt||!storageReady||!env.DASHBOARD_PASSWORD||!okx.credentialsReady||engine.fatal||!engine.lastTick||Date.now()-engine.lastTick>60000||engine.ledgerError)return;
+    if(Date.now()-lastStartupCheck<60000)return;lastStartupCheck=Date.now();
+    try{
+      await okx.syncTime();const [account,balance]=await Promise.all([okx.accountConfig(),okx.balance()]);
+      if(!['net_mode','long_short_mode'].includes(account.posMode)||!Array.isArray(balance.details))throw new Error('Hesap verisi doğrulanamadı.');
+      store.save();alerts.resolve('startup-api');
+      if(Object.values(store.data.alerts).some(a=>!a.resolved)||store.data.bots.some(b=>b.error||b.ownershipLost||b.status!=='stopped'&&!b.matched))return;
+      alerts.queueStartup('Uygulama başladı. OKX hesap okuma bağlantısı ve kalıcı kayıt yazımı doğrulandı. Panel hazır. Emirler seçtiğiniz grid başlatıldığında gönderilir.');
+      await alerts.flush();
+    }catch(e){alerts.raise('startup-api','Başlangıç bağlantı kontrolü başarısız: '+alerts.redact(e.message),30000);}
+  }
   const csrf=token=>createHmac('sha256',sessionKey).update(token).digest('hex');
   const cookie=req=>(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('grid_session='))?.slice(13)||'';
   const auth=req=>{const token=cookie(req),expires=sessions.get(token);return expires&&expires>Date.now()?token:null;};
@@ -56,7 +68,8 @@ export function createApp(env=process.env,dependencies={}){
       if(!auth(req))fail('Oturum açın.',401);
       if(req.method==='POST'&&p==='/api/logout'){write(req);sessions.delete(auth(req));return send(res,200,{ok:true},{'Set-Cookie':'grid_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'});}
       if(req.method==='GET'&&p==='/api/instruments')return send(res,200,{instruments:await okx.instruments()});
-      if(req.method==='GET'&&p==='/api/state')return send(res,200,{bots:engine.summaries(),events:store.data.events.slice(-100).reverse(),health:{lastTick:engine.lastTick,duration:engine.lastDuration,fatal:engine.fatal,ledgerError:engine.ledgerError,ledgerThrough:store.data.ledgerThrough,telegram:{enabled:alerts.enabled,error:alerts.error,lastSentAt:store.data.telegramLastAt||null}},alerts:Object.values(store.data.alerts).filter(x=>!x.resolved)});
+      if(req.method==='GET'&&p==='/api/defaults')return send(res,200,await engine.defaults(url.searchParams.get('instId')||''));
+      if(req.method==='GET'&&p==='/api/state')return send(res,200,{bots:engine.summaries(),events:store.data.events.slice(-100).reverse(),health:{lastTick:engine.lastTick,duration:engine.lastDuration,fatal:engine.fatal,ledgerError:engine.ledgerError,ledgerThrough:store.data.ledgerThrough,telegram:{enabled:alerts.enabled,error:alerts.error,lastSentAt:store.data.telegramLastAt||null,startupSentAt:store.data.telegramStartup?.sentAt||null}},alerts:Object.values(store.data.alerts).filter(x=>!x.resolved)});
       if(req.method==='GET'&&p==='/api/export'){
         const result={exportedAt:new Date().toISOString(),version:3,bots:store.data.bots,bills:store.data.bills,events:store.data.events};
         return send(res,200,result,{'Content-Disposition':'attachment; filename="grid-audit.json"'});
@@ -74,7 +87,7 @@ export function createApp(env=process.env,dependencies={}){
   const server=http.createServer(route);server.requestTimeout=15000;server.headersTimeout=10000;
   const pollMs=Math.max(1500,intEnv(env.POLL_MS,3000));
   let timer;
-  async function loop(){if(shuttingDown)return;try{await engine.tick();}catch(e){console.error('Grid döngüsü:',alerts.redact(e.message));}finally{if(!shuttingDown){timer=setTimeout(loop,pollMs);timer.unref();}}}
+  async function loop(){if(shuttingDown)return;try{await engine.tick();await checkStartup();}catch(e){console.error('Grid döngüsü:',alerts.redact(e.message));}finally{if(!shuttingDown){timer=setTimeout(loop,pollMs);timer.unref();}}}
   if(dependencies.autoTick!==false){timer=setTimeout(loop,100);timer.unref();}
   const watchdog=setInterval(()=>{if(Date.now()-(engine.lastTick||bootAt)>60000&&store.data.bots.some(b=>b.status!=='stopped')){alerts.raise('watchdog','Grid döngüsü 60 saniyedir tamamlanmadı. Emir koruması gecikebilir.');void alerts.flush();}else alerts.resolve('watchdog');},10000);watchdog.unref();
   server.on('close',()=>{shuttingDown=true;clearTimeout(timer);clearInterval(watchdog);});
@@ -87,7 +100,7 @@ export function createApp(env=process.env,dependencies={}){
     while(alerts.busy)await new Promise(r=>setTimeout(r,50));
     if(server.listening)await new Promise(r=>server.close(r));store.close();
   }
-  return {server,engine,store,alerts,close};
+  return {server,engine,store,alerts,close,checkStartup};
 }
 export async function telegramChatIds(env=process.env,request=fetch){
   if(!env.TELEGRAM_BOT_TOKEN)throw new Error('Önce TELEGRAM_BOT_TOKEN ayarlayın.');
@@ -103,7 +116,7 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
   let app;
   try{app=createApp();}catch(e){console.error(e.message);process.exitCode=1;}
   if(app){
-    app.server.listen(Number(process.env.PORT||3000),process.env.HOST||'0.0.0.0',()=>console.log('Grid Control 3 • '+(process.env.OKX_DEMO==='false'?'CANLI':'DEMO')+' • port '+(process.env.PORT||3000)));
+    app.server.listen(Number(process.env.PORT||3000),process.env.HOST||'0.0.0.0',()=>console.log('Grid Control 3.1.0 • '+(process.env.OKX_DEMO==='true'?'DEMO':'CANLI')+' • port '+(process.env.PORT||3000)));
     let closing=false;
     for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{if(closing)return;closing=true;const deadline=setTimeout(()=>process.exit(1),25000);deadline.unref();app.close().then(()=>process.exit(0)).catch(e=>{console.error(e.message);process.exit(1);});});
   }
