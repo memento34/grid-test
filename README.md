@@ -1,93 +1,83 @@
-# Grid Control — OKX vadeli grid paneli
+# Grid Control 2 — OKX normal limit emirli dinamik grid
 
-Bu proje, OKX hesabınızda long, short ve nötr vadeli grid botu oluşturmak ve
-izlemek için bir web panelidir. Emir döngüsünü OKX'in yerel grid botu yürütür.
-Railway yeniden başlasa bile açık bot OKX tarafında çalışmaya devam eder.
+Bu sürüm OKX'in hazır grid botunu **başlatmaz**. Railway üzerinde çalışan bu
+uygulama, OKX vadeli piyasasına normal `limit` giriş ve çıkış emirlerini kendi
+gönderir. Eski sürümde açtığınız OKX yerel botları bu dosyaları yükleyince
+kendiliğinden durmaz; OKX hesabınızdan ayrıca yönetmeniz gerekir.
 
-## GitHub ve Railway kurulumu
+## Kurulum
 
-1. ZIP dosyasını bilgisayarınızda açın. ZIP dosyasını doğrudan GitHub'a
-   yüklemeyin; içindeki dosyaları yeni bir GitHub deposunun köküne yükleyin.
-2. Railway'de yeni proje açıp bu GitHub deposunu bağlayın. Railway npm start
-   komutuyla Node uygulamasını başlatır. Servise bir public domain verin.
-3. Railway Service → Variables bölümüne şu dört değeri ekleyin:
+1. ZIP'i açın; **içindeki dosyaları** GitHub deposunun köküne yükleyin.
+2. Railway servisini GitHub deposuna bağlayın. Başlatma komutu `npm start`.
+3. Railway servisine kalıcı bir **Volume** bağlayın. Örneğin bağlama yolu
+   `/data` ise `DATA_DIR=/data` değişkenini ekleyin. Railway üzerinde bu
+   değişken olmadan canlı bot başlatılmaz. Bot ayarları ve emir kimlikleri
+   bu volume üzerindeki `manual-grids.json` dosyasında tutulur.
+4. Railway Variables bölümüne `OKX_API_KEY`, `OKX_SECRET_KEY`,
+   `OKX_PASSPHRASE` ve `DASHBOARD_PASSWORD` ekleyin. Mevcut anahtarlarınız
+   kullanılabilir; Read ve Trade yetkileri gerekir. Withdraw vermeyin.
+5. Hesabınızın bölgesine göre gerekirse `OKX_SITE=global|eea|us|tr` ayarlayın.
+6. Servisi **tek kopya/replica** olarak çalıştırın. Aynı volume üzerinde iki
+   kopyanın emir yönetmesi desteklenmez.
 
-   | Değişken | Değer |
-   | --- | --- |
-   | OKX_API_KEY | OKX API anahtarınız |
-   | OKX_SECRET_KEY | OKX gizli anahtarınız |
-   | OKX_PASSPHRASE | Anahtarı oluştururken seçtiğiniz parola |
-   | DASHBOARD_PASSWORD | Panel girişinde kullanacağınız güçlü, ayrı parola |
+`MAX_TRADE_USDT` (varsayılan 100), `MAX_LEVERAGE` (5) ve
+`MAX_ACTIVE_BOTS` (5) isteğe bağlı işlem sınırlarıdır. `DATA_DIR` için
+volume yolu Railway servisinin kendi dosya sisteminde olmalıdır.
 
-4. OKX hesabınızın bölgesine göre gerekirse OKX_SITE ekleyin:
-   global (varsayılan), eea, us veya tr. Yanlış bölge API kimlik
-   doğrulamasının başarısız olmasına yol açabilir.
-5. Railway servisini yeniden dağıtın; verilen HTTPS adrese gidip panel
-   şifresiyle giriş yapın. Parite ve aralığı seçerek botu açabilirsiniz.
+## Grid hesabı ve emir döngüsü
 
-OKX API anahtarında Read + Trade yetkileri yeterlidir. Withdraw yetkisi
-vermeyin. Anahtarları dosyaya, GitHub'a veya tarayıcıya yazmayın.
-IP beyaz listesi kullanacaksanız Railway'in sabit çıkış IP özelliği ve
-uygun planı gerekir.
+- Alt fiyat, üst fiyat ve grid başına hedef yüzde girilir. Uygulama
+  `floor(log(üst/alt) / log(1 + yüzde/100))` formülüyle grid sayısını
+  hesaplar. Örneğin 1.884,25–3.485,38 ve %1 için **61 grid** çıkar.
+  Fiyatlar OKX fiyat adımına yuvarlanır; son gerçek aralık küçük farklılık
+  gösterebilir. %0,1–%25 ve en fazla 500 seviye desteklenir.
+- “İşlem başı değer” her giriş için sabit **USDT emir değeridir**. Toplam
+  grid sayısına bölünmez. Sözleşme adımına aşağı yuvarlanan gerçek emir
+  değeri biraz daha düşük olabilir. Kaldıraç bu değeri çoğaltmaz; seçilen
+  kaldıraç OKX isolated hesabına uygulanır.
+- Long: piyasanın altındaki en yakın beş girişe alış limiti konur. Giriş
+  dolunca bir üst komşu seviyeye satış limitiyle kâr alma konur. Çıkış
+  dolunca aynı giriş seviyesi yeniden kullanılabilir.
+- Short: piyasanın üstündeki en yakın beş girişe satış limiti konur;
+  bir alt komşu seviyede alış limitiyle kapatılır.
+- Nötr: fiyat aralığının matematiksel orta noktasının altındaki seviyeler
+  long, üstündekiler short yönündedir. Nötr için OKX hesabında
+  **long/short (hedge) pozisyon modu** gerekir.
+- Fiyat yer değiştirince en yakın beş uygun **dolmamış giriş** açık kalır.
+  Uzak kalan girişler iptal edilir; yakın seviyeler açılır. Pozisyona
+  dönmüş seviyelerin kâr alma emirleri bu pencere değişiminde iptal edilmez.
+- İlk sürümde aynı anda en fazla **beş pozisyon seviyesi** ve beş giriş
+  emri bulunur. Bu, toplam açık pozisyon büyüklüğünü sınırlamak içindir.
+  Kâr alma dolunca yeniden giriş için yer açılır.
+- Durdur düğmesi yeni girişleri keser ve dolmamış girişleri iptal eder.
+  Açık pozisyonların kâr alma limitleri izlenmeye devam eder; son çıkış
+  tamamlanınca bot durur.
 
-## Çalışma mantığı
+## Canlı işlem davranışı
 
-- Long: OKX alış gridini, dolumdan sonra üst seviyedeki çıkışı yönetir.
-- Short: OKX satış gridini, dolumdan sonra alt seviyedeki çıkışı yönetir.
-- Nötr: OKX başlangıçtaki piyasa fiyatı altına long, üstüne short
-  yerleştirir. Bu ayırıcı fiyat, verdiğiniz alt ve üst sınırın matematiksel
-  orta noktasıyla aynı olmak zorunda değildir. Panel iki fiyatı da gösterir.
-- İlk pozisyon açma (basePos) kapalıdır. Bot yine de fiyat değişiminde
-  gerçek emirler verir. OKX bazı limit emirlerini piyasa koşullarına göre
-  hemen doldurabilir; limit emri her zaman maker işlem anlamına gelmez.
-- Girdiğiniz Toplam marjin, işlem başına tutar değildir. OKX bunu
-  kendi grid emirlerine dağıtır. WunderTrading'deki işlem başına sabit
-  USDT tutarının birebir karşılığı yoktur.
-- Durdur / 1 botu durdurur ve kalan pozisyonu piyasa emriyle kapatabilir.
-  Durdur / 2 botu durdurur ve pozisyonu açık bırakır. Açık pozisyonu
-  OKX hesabından yönetmeniz gerekir.
+Başlatmadan önce uygulama aynı paritede başka açık pozisyon, normal emir
+veya OKX yerel grid botu bulunmadığını kontrol eder. Bunlar varsa yeni
+botu başlatmaz. Bir paritede aynı anda bir Grid Control botu çalışır.
 
-## Sınırlar ve ayarlar
+Bot açıkken Railway servisinin sürekli çalışması gerekir. Servis durursa
+OKX'te daha önce konmuş limit emirleri durmaya devam eder; **yeni dolan bir
+girişin kâr alma emri, servis yeniden başlayana kadar kurulamaz**. Kalıcı
+volume sayesinde uygulama yeniden başlayınca kayıtlı emirleri OKX'ten
+sorgular ve döngüye devam eder. Volume'u silmeyin veya çalışan bot varken
+`DATA_DIR` yolunu değiştirmeyin. Başka uygulamaların ve elle verilen
+işlemlerin aynı pariteye müdahale etmesi botun pozisyon hesabını bozabilir;
+bu yüzden ayrı bir alt hesap kullanın.
 
-İlk deneme için sunucu bir botta en fazla 100 USDT marjin, en fazla 5×
-kaldıraç ve en fazla 5 aktif bot kabul eder. Bu değerleri Railway
-Variables bölümünde MAX_MARGIN_USDT, MAX_LEVERAGE ve MAX_ACTIVE_BOTS
-ile değiştirebilirsiniz. OKX'in kendi minimumları ayrıca geçerlidir.
+Normal limit emir piyasa fiyatı emir gönderilirken değişirse hemen
+dolabilir. Hedef yüzde **brüt fiyat aralığıdır**; işlem ücretleri ve fonlama
+çıktıktan sonraki net kârı garanti etmez. İlk denemeyi küçük tutarla yapın
+ve emirleri OKX hesabından da gözleyin.
 
-Panel yalnızca kendisinin oluşturduğu ve GC ile başlayan kimliği taşıyan
-aktif botları listeler. Botlar OKX hesabınızda kalır; uygulamayı silmek
-botları durdurmaz. OKX demo hesabı, yerel grid botu API'sini desteklemez.
-Bu nedenle bot oluşturma işlemi canlı hesapta gerçekleşir.
+## Test ve kaynaklar
 
-Bot oluşturma isteği ağda zaman aşımına uğrarsa bot yine de açılmış olabilir.
-Bu durumda yeniden Başlat'a basmadan önce OKX bot listesini kontrol edin.
+Node.js 20+ ile `npm test` otomatik hesap, giriş/çıkış döngüsü, yeniden
+başlatma, iptal ve OKX istek imzasını çevrimdışı test eder.
 
-## Bot oluşturma hatası
-
-Panel artık OKX'in döndürdüğü hata kodunu ve açıklamasını formun altında kalıcı
-olarak gösterir. Aynı bilgi, API anahtarları olmadan Railway Deploy Logs içinde
-de görünür. HTTP 200, OKX'in emri kabul ettiği anlamına gelmez: API bu HTTP
-durumu içinde ayrıca ret kodu gönderebilir.
-
-Paneldeki grid başına bütçe hesabı yaklaşık bir ön kontroldür. Örneğin 20 USDT,
-100 grid ve 1× kaldıraç toplam marjini grid başına yaklaşık 0,20 USDT'ye
-indirir. OKX'in yedek marjini ve minimum sözleşme büyüklüğü bunun üstüne
-çıkabilir. Uyarı varsa grid sayısını azaltarak veya marjini yükselterek yeniden
-deneyin; kesin uygunluk kararını OKX verir. Bot oluşmadan hesabınızda emir
-açılmaz; belirsiz ağ hatasında ise önce OKX bot listesini kontrol edin.
-
-## Yerelde çalışma
-
-Node.js 20 veya yenisi gerekir. Değişkenleri terminal ortamınızda tanımlayıp
-npm start çalıştırın. http://localhost:3000 adresini açın.
-npm test OKX isteğinin imzalanmasını ve grid isteği alanlarını test eder.
-
-## Kaynaklar
-
-- [OKX Agent Trade Kit grid kodu](https://github.com/okx/agent-trade-kit/blob/github-main/packages/core/src/tools/bot/grid.ts)
-- [OKX Agent Trade Kit grid belgeleri](https://github.com/okx/agent-trade-kit/blob/github-main/docs/modules/bot.md)
-- [OKX vadeli grid açıklaması](https://www.okx.com/en-ae/help/futures-grid-bot-faq)
-- [OKX API belgeleri](https://www.okx.com/docs-v5/en/)
-
-Uygulama, Agent Trade Kit'in doğruladığı OKX REST grid uç noktalarını
-doğrudan kullanır. Railway'de ayrıca AI/MCP işlemi çalıştırmanız gerekmez.
+- [OKX normal emir API belgeleri](https://www.okx.com/docs-v5/en/)
+- [OKX normal emir örneği](https://www.okx.com/docs-v5/trick_en/)
+- [OKX vadeli grid davranışı](https://www.okx.com/en-gb/help/futures-grid-bot-faq)

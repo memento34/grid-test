@@ -80,7 +80,7 @@ export function createOkxClient(config, request = fetch) {
     async instruments() {
       const data = await call('GET', '/api/v5/public/instruments', { instType: 'SWAP' });
       return data.filter(item => item.instId?.endsWith('-USDT-SWAP') && item.state === 'live')
-        .map(item => ({ instId: item.instId, tickSz: item.tickSz, minSz: item.minSz, ctVal: item.ctVal, ctValCcy: item.ctValCcy }))
+        .map(item => ({ instId: item.instId, tickSz: item.tickSz, minSz: item.minSz, lotSz: item.lotSz, ctVal: item.ctVal, ctValCcy: item.ctValCcy }))
         .sort((a, b) => a.instId.localeCompare(b.instId));
     },
     async ticker(instId) {
@@ -88,42 +88,37 @@ export function createOkxClient(config, request = fetch) {
       if (!data[0]) throw new OkxError('Parite fiyatı alınamadı.', '', 502);
       return { instId, last: data[0].last, bidPx: data[0].bidPx, askPx: data[0].askPx, ts: data[0].ts };
     },
+    async accountConfig() {
+      const data = await call('GET', '/api/v5/account/config', undefined, true);
+      return data[0] || {};
+    },
+    async positions(instId) {
+      return call('GET', '/api/v5/account/positions', { instId }, true);
+    },
+    async pendingOrders(instId) {
+      return call('GET', '/api/v5/trade/orders-pending', { instId, instType: 'SWAP' }, true);
+    },
+    async setLeverage(instId, leverage, posSide) {
+      const body = { instId, lever: String(leverage), mgnMode: 'isolated' };
+      if (posSide) body.posSide = posSide;
+      return call('POST', '/api/v5/account/set-leverage', body, true);
+    },
+    async placeOrder(order) {
+      const data = await call('POST', '/api/v5/trade/order', order, true);
+      return data[0] || {};
+    },
+    async orderDetails(instId, clOrdId) {
+      const data = await call('GET', '/api/v5/trade/order', { instId, clOrdId }, true);
+      return data[0] || null;
+    },
+    async cancelOrder(instId, clOrdId) {
+      return call('POST', '/api/v5/trade/cancel-order', { instId, clOrdId }, true);
+    },
     async gridList(status = 'active') {
       const path = status === 'history'
         ? '/api/v5/tradingBot/grid/orders-algo-history'
         : '/api/v5/tradingBot/grid/orders-algo-pending';
       return call('GET', path, { algoOrdType: 'contract_grid', limit: '100' }, true);
-    },
-    async gridDetails(algoId) {
-      const data = await call('GET', '/api/v5/tradingBot/grid/orders-algo-details', { algoOrdType: 'contract_grid', algoId }, true);
-      return data[0] || null;
-    },
-    async gridSubOrders(algoId, type) {
-      return call('GET', '/api/v5/tradingBot/grid/sub-orders', { algoOrdType: 'contract_grid', algoId, type, limit: '100' }, true);
-    },
-    async createGrid(settings) {
-      return call('POST', '/api/v5/tradingBot/grid/order-algo', {
-        instId: settings.instId,
-        algoOrdType: 'contract_grid',
-        maxPx: settings.maxPx,
-        minPx: settings.minPx,
-        gridNum: String(settings.gridNum),
-        runType: settings.runType,
-        sz: settings.margin,
-        direction: settings.direction,
-        lever: String(settings.leverage),
-        basePos: false,
-        algoClOrdId: settings.algoClOrdId,
-        triggerParams: [{ triggerAction: 'start', triggerStrategy: 'instant' }]
-      }, true);
-    },
-    async stopGrid(algoId, instId, stopType) {
-      return call('POST', '/api/v5/tradingBot/grid/stop-order-algo', [{
-        algoId,
-        algoOrdType: 'contract_grid',
-        instId,
-        stopType
-      }], true);
     }
   };
 }

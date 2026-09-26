@@ -48,7 +48,7 @@
           <div>
             <div class="eyebrow lime">STRATEJİ MERKEZİ <span class="hero-line"></span> OKX VADELİ</div>
             <h1>Gridlerin kontrolü<br><em>sende.</em></h1>
-            <p>Fiyat aralığını belirle, yönünü seç ve OKX grid botunu başlat. Açık emirleri ve bot durumunu buradan izle.</p>
+            <p>Fiyat aralığını belirle. Panel, OKX vadeli borsasına normal limit giriş ve kâr alma emirleri gönderir; dolan seviyeleri yeniden kurar.</p>
           </div>
           <div class="hero-graphic" aria-hidden="true"><div class="graphic-grid"><span class="grid-line l1"></span><span class="grid-line l2"></span><span class="grid-line l3"></span><span class="grid-line l4"></span><span class="grid-line l5"></span><svg viewBox="0 0 300 200" preserveAspectRatio="none"><path d="M0 156 L22 144 L39 151 L58 111 L78 122 L96 92 L115 105 L136 78 L158 91 L178 56 L199 64 L220 35 L240 47 L262 24 L300 14"/></svg></div><div class="graphic-tag">GRID / 01</div></div>
         </section>
@@ -56,7 +56,7 @@
         <section class="summary-row">
           <div class="summary-tile"><span>AKTİF BOTLAR</span><strong id="active-count">—</strong><small>Bu panelden açılan</small></div>
           <div class="summary-tile"><span>BAĞLANTI</span><strong id="account-state">—</strong><small id="account-site">OKX API</small></div>
-          <div class="summary-tile"><span>GÜVENLİK SINIRI</span><strong id="margin-limit">—</strong><small>Bot başına en yüksek marjin</small></div>
+          <div class="summary-tile"><span>GÜVENLİK SINIRI</span><strong id="margin-limit">—</strong><small>Grid başına en yüksek işlem değeri</small></div>
         </section>
 
         <div class="workspace-grid" id="create">
@@ -66,10 +66,12 @@
               <div class="field-block"><label for="pair">OKX vadeli parite</label><div class="select-wrap"><select id="pair" name="instId" required><option value="">Pariteler yükleniyor...</option></select></div><small>Yalnızca USDT teminatlı sürekli vadeli sözleşmeler.</small></div>
               <div class="field-block"><label>Grid yönü</label><div class="segment" id="direction-segment"><label><input type="radio" name="direction" value="long" checked><span>↗ Long</span></label><label><input type="radio" name="direction" value="short"><span>↘ Short</span></label><label><input type="radio" name="direction" value="neutral"><span>↔ Nötr</span></label></div><small id="direction-help">Fiyat düştükçe long açar; bir üst gridde kapatır.</small></div>
               <div class="field-pair"><div class="field-block"><label for="lower">Alt fiyat</label><div class="input-suffix"><input id="lower" name="minPx" type="number" min="0" step="any" placeholder="Örn. 140" required><span>USDT</span></div></div><div class="field-block"><label for="upper">Üst fiyat</label><div class="input-suffix"><input id="upper" name="maxPx" type="number" min="0" step="any" placeholder="Örn. 180" required><span>USDT</span></div></div></div>
-              <div class="field-pair"><div class="field-block"><label for="grids">Grid sayısı</label><input id="grids" name="gridNum" type="number" min="2" max="100" value="10" required></div><div class="field-block"><label for="spacing">Aralık türü</label><div class="select-wrap"><select id="spacing" name="runType"><option value="1">Eşit fiyat aralığı</option><option value="2">Eşit yüzde aralığı</option></select></div></div></div>
-              <div class="field-pair"><div class="field-block"><label for="margin">Toplam marjin</label><div class="input-suffix"><input id="margin" name="margin" type="number" min="0" step="any" value="50" required><span>USDT</span></div></div><div class="field-block"><label for="leverage">Kaldıraç</label><div class="input-suffix"><input id="leverage" name="leverage" type="number" min="1" step="1" value="1" required><span>×</span></div></div></div>
-              <div class="info-band"><span>ⓘ</span><p><strong>İlk pozisyon kapalı.</strong> Bot fiyat seviyelerinde işlem bekler. OKX, marjini grid emirlerine kendi kurallarına göre dağıtır.</p></div>
-              <div class="form-actions"><button id="create-button" type="submit" class="primary full">Canlı grid botunu başlat <span>↗</span></button><p>Bu işlem gerçek OKX hesabınızda bot oluşturur.</p></div>
+              <div class="field-pair"><div class="field-block"><label for="target-pct">Grid başına hedef yüzde</label><div class="input-suffix"><input id="target-pct" name="targetPct" type="number" min="0.1" max="25" step="any" value="1" required><span>%</span></div></div><div class="field-block"><label>Hesaplanan grid sayısı</label><div class="calculated-value" id="calculated-grids">—</div></div></div>
+              <div class="field-pair"><div class="field-block"><label for="amount">İşlem başı değer</label><div class="input-suffix"><input id="amount" name="amountPerTrade" type="number" min="0" step="any" value="20" required><span>USDT</span></div></div><div class="field-block"><label for="leverage">Kaldıraç</label><div class="input-suffix"><input id="leverage" name="leverage" type="number" min="1" step="1" value="1" required><span>×</span></div></div></div>
+              <div class="info-band"><span>ⓘ</span><p><strong>Beş seviye sınırı.</strong> En yakın beş giriş limiti açılır. Giriş dolunca komşu seviyeye limit kâr alma gönderilir; çıkış dolunca giriş yeniden kurulabilir. Toplam açık pozisyon seviyesi de beşle sınırlıdır.</p></div>
+              <p id="budget-note" class="budget-note" aria-live="polite">İşlem başı tutarın en küçük sözleşme miktarını karşılaması gerekir.</p>
+              <div id="create-error" class="create-error hidden" role="alert"></div>
+              <div class="form-actions"><button id="create-button" type="submit" class="primary full">Canlı limit gridini başlat <span>↗</span></button><p>Bu işlem OKX hesabınızda gerçek vadeli limit emirleri oluşturur.</p></div>
             </form>
           </section>
 
@@ -87,7 +89,7 @@
           <div class="panel-title-row"><div><p class="eyebrow">CANLI DURUM</p><h2>Aktif gridler</h2></div><button id="refresh" class="secondary">↻ Yenile</button></div>
           <div id="bots" class="bots-list"><div class="empty-state">Botlar yükleniyor...</div></div>
         </section>
-        <footer>Grid Control · OKX vadeli grid API · Emirler ve pozisyonlar OKX hesabınızda tutulur.</footer>
+        <footer>Grid Control · Normal OKX vadeli limit emirleri · Kontrol döngüsü Railway servisinde çalışır.</footer>
       </div>
     </main>
   </div>

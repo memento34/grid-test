@@ -3,55 +3,45 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { createOkxClient, OkxError } from '../okx.js';
 
-function fakeResponse(data, code = '0') {
+function response(data, code = '0') {
   return { ok: true, status: 200, async json() { return { code, msg: '', data }; } };
 }
 
-test('grid create signs the exact OKX request and never opens a base position', async () => {
+test('normal futures limit order is signed and sent to the standard trade endpoint', async () => {
+  let request;
+  const client = createOkxClient(
+    { site: 'global', apiKey: 'KEY', secretKey: 'SECRET', passphrase: 'PASS' },
+    async (url, options) => { request = { url, options }; return response([{ ordId: '42', sCode: '0' }]); }
+  );
+  const body = {
+    instId: 'BTC-USDT-SWAP', tdMode: 'isolated', clOrdId: 'MG123',
+    side: 'buy', posSide: 'long', ordType: 'limit', px: '90000', sz: '1'
+  };
+  const result = await client.placeOrder(body);
+  assert.equal(result.ordId, '42');
+  assert.equal(request.url, 'https://www.okx.com/api/v5/trade/order');
+  assert.deepEqual(JSON.parse(request.options.body), body);
+  const signed = request.options.headers['OK-ACCESS-TIMESTAMP'] + 'POST' +
+    '/api/v5/trade/order' + request.options.body;
+  assert.equal(request.options.headers['OK-ACCESS-SIGN'], createHmac('sha256', 'SECRET').update(signed).digest('base64'));
+});
+
+test('OKX nested rejection and top-level HTTP 200 rejection retain their codes', async () => {
+  const credentials = { site: 'global', apiKey: 'KEY', secretKey: 'SECRET', passphrase: 'PASS' };
+  const nested = createOkxClient(credentials, async () => response([{ sCode: '51121', sMsg: 'Invalid quantity' }]));
+  await assert.rejects(nested.placeOrder({}), error => error instanceof OkxError && error.code === '51121');
+  const top = createOkxClient(credentials, async () => response([], '58012'));
+  await assert.rejects(top.placeOrder({}), error => error instanceof OkxError && error.message.includes('kod 58012'));
+});
+
+test('order lookup uses client ID and cancellation sends the same ID', async () => {
   const calls = [];
   const client = createOkxClient(
     { site: 'global', apiKey: 'KEY', secretKey: 'SECRET', passphrase: 'PASS' },
-    async (url, options) => {
-      calls.push({ url, options });
-      return fakeResponse([{ algoId: '42', sCode: '0', sMsg: '' }]);
-    }
+    async (url, options) => { calls.push({ url, options }); return response([{ clOrdId: 'MG123', state: 'live', sCode: '0' }]); }
   );
-  const result = await client.createGrid({
-    instId: 'BTC-USDT-SWAP', minPx: '90000', maxPx: '110000',
-    gridNum: 10, runType: '1', margin: '25', direction: 'neutral',
-    leverage: 1, algoClOrdId: 'GC123'
-  });
-  assert.equal(result[0].algoId, '42');
-  const { url, options } = calls[0];
-  assert.equal(url, 'https://www.okx.com/api/v5/tradingBot/grid/order-algo');
-  const body = JSON.parse(options.body);
-  assert.equal(body.algoOrdType, 'contract_grid');
-  assert.equal(body.direction, 'neutral');
-  assert.equal(body.basePos, false);
-  assert.equal(body.sz, '25');
-  assert.deepEqual(body.triggerParams, [{ triggerAction: 'start', triggerStrategy: 'instant' }]);
-  const signed = options.headers['OK-ACCESS-TIMESTAMP'] + 'POST' +
-    '/api/v5/tradingBot/grid/order-algo' + options.body;
-  assert.equal(options.headers['OK-ACCESS-SIGN'], createHmac('sha256', 'SECRET').update(signed).digest('base64'));
-});
-
-test('nested OKX rejection is surfaced instead of reported as success', async () => {
-  const client = createOkxClient(
-    { site: 'global', apiKey: 'KEY', secretKey: 'SECRET', passphrase: 'PASS' },
-    async () => fakeResponse([{ algoId: '', sCode: '51121', sMsg: 'Invalid quantity' }])
-  );
-  await assert.rejects(
-    client.createGrid({ instId: 'BTC-USDT-SWAP', minPx: '1', maxPx: '2', gridNum: 2, runType: '1', margin: '1', direction: 'long', leverage: 1, algoClOrdId: 'GC1' }),
-    error => error instanceof OkxError && error.code === '51121'
-  );
-});
-
-test('stop uses the array body required by OKX', async () => {
-  let body;
-  const client = createOkxClient(
-    { site: 'global', apiKey: 'KEY', secretKey: 'SECRET', passphrase: 'PASS' },
-    async (_, options) => { body = JSON.parse(options.body); return fakeResponse([{ sCode: '0' }]); }
-  );
-  await client.stopGrid('42', 'ETH-USDT-SWAP', '2');
-  assert.deepEqual(body, [{ algoId: '42', algoOrdType: 'contract_grid', instId: 'ETH-USDT-SWAP', stopType: '2' }]);
+  await client.orderDetails('BTC-USDT-SWAP', 'MG123');
+  await client.cancelOrder('BTC-USDT-SWAP', 'MG123');
+  assert(calls[0].url.includes('clOrdId=MG123'));
+  assert.deepEqual(JSON.parse(calls[1].options.body), { instId: 'BTC-USDT-SWAP', clOrdId: 'MG123' });
 });
