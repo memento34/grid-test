@@ -61,8 +61,8 @@ test('cancel acknowledgements still reserve capacity until terminal confirmation
   const x=setup();try{await x.engine.create(input);await x.engine.tick();x.fake.client.cancelOrder=async()=>[];x.fake.setPrice(85);await x.engine.tick();await x.engine.tick();assert.equal(x.fake.placed.length,5);
   }finally{x.cleanup();}
 });
-test('net exits reduce-only; neutral net mode rejected',async()=>{
-  const x=setup();try{x.fake.client.accountConfig=async()=>({posMode:'net_mode'});await assert.rejects(x.engine.create({...input,direction:'neutral',minPx:'50',maxPx:'150',targetPct:'1'}),/hedge/);await x.engine.create(input);await x.engine.tick();const a=x.fake.placed[0];x.fake.fill(a.clOrdId,a.sz);await x.engine.tick();assert.equal(x.fake.placed.find(o=>o.side==='sell').reduceOnly,true);
+test('net long exits are reduce-only',async()=>{
+  const x=setup();try{x.fake.client.accountConfig=async()=>({posMode:'net_mode'});await x.engine.create(input);await x.engine.tick();const a=x.fake.placed[0];x.fake.fill(a.clOrdId,a.sz);await x.engine.tick();assert.equal(x.fake.placed.find(o=>o.side==='sell').reduceOnly,true);
   }finally{x.cleanup();}
 });
 test('short entry and exit sides are correct',async()=>{

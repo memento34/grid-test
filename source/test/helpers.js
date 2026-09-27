@@ -18,6 +18,7 @@ export function exchange(){
     positions:async()=>{
       let long=0n,short=0n;
       for(const o of orders.values()){const q=dec(o.accFillSz);if(o.posSide==='short')short+=o.side==='sell'?q:-q;else long+=o.side==='buy'?q:-q;}
+      if((await client.accountConfig()).posMode==='net_mode')return long===0n?[]:[{instId:input.instId,posSide:'net',pos:str(long),mgnMode:'cross',lever:'10',upl:'1.25',markPx:String(price),liqPx:'10'}];
       return [['long',long],['short',short]].filter(([,q])=>q!==0n).map(([posSide,q])=>({instId:input.instId,posSide,pos:str(q),mgnMode:'cross',lever:'10',upl:'1.25',markPx:String(price),liqPx:'10'}));
     },bills:async()=>rows
   };

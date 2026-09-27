@@ -49,11 +49,11 @@ test('neutral accumulates more than five positions but never exceeds each-side g
     assert.equal(longUsed,cap);assert(b.levels.filter(l=>l.direction==='long'&&Number(l.remaining)>0).length>5);assert.equal(pending(x,'long').length,0);assert.equal(pending(x,'short').length,5);
   }finally{x.cleanup();}
 });
-test('neutral recenters both windows when price crosses initial midpoint',async()=>{
+test('neutral keeps long levels below fixed starting center as price rises',async()=>{
   const x=setup();try{await x.engine.create(neutralInput());await x.engine.tick();x.fake.setPrice(120);await x.engine.tick();await x.engine.tick();
     assert.equal(pending(x,'long').length,5);assert.equal(pending(x,'short').length,5);
     assert(pending(x,'long').every(o=>Number(o.px)<119.99));assert(pending(x,'short').every(o=>Number(o.px)>120.01));
-    assert(pending(x,'long').some(o=>Number(o.px)>100),'Long entries must move above the original center when current price moves');
+    assert(pending(x,'long').every(o=>Number(o.px)<100),'Long entries must stay below the initial center');
   }finally{x.cleanup();}
 });
 test('neutral outstanding cancels reserve each-side entry window, not just total cap',async()=>{

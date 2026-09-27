@@ -116,7 +116,7 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
   let app;
   try{app=createApp();}catch(e){console.error(e.message);process.exitCode=1;}
   if(app){
-    app.server.listen(Number(process.env.PORT||3000),process.env.HOST||'0.0.0.0',()=>console.log('Grid Control 3.1.0 • '+(process.env.OKX_DEMO==='true'?'DEMO':'CANLI')+' • port '+(process.env.PORT||3000)));
+    app.server.listen(Number(process.env.PORT||3000),process.env.HOST||'0.0.0.0',()=>console.log('Grid Control 3.2.0 • '+(process.env.OKX_DEMO==='true'?'DEMO':'CANLI')+' • port '+(process.env.PORT||3000)));
     let closing=false;
     for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{if(closing)return;closing=true;const deadline=setTimeout(()=>process.exit(1),25000);deadline.unref();app.close().then(()=>process.exit(0)).catch(e=>{console.error(e.message);process.exit(1);});});
   }
